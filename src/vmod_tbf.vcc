@@ -1,0 +1,6 @@
+Module tbf
+Init tbf_init
+Function VOID open(STRING, STRING)
+Function VOID close()
+Function VOID sync()
+Function BOOL rate(STRING, INT, DURATION, INT)

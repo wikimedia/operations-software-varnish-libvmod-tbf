@@ -1,0 +1,47 @@
+varnishtest "Test tbf overlimit"
+
+server s1 {
+       rxreq
+       txresp
+} -start
+
+varnish v1 -vcl+backend {
+	import tbf from "${vmod_topbuild}/src/.libs/libvmod_tbf.so";
+	sub vcl_init {
+		tbf.open("${vmod_topbuild}/tests/tbf.db", "truncate");
+	}
+	sub vcl_fini {
+		tbf.close();
+	}
+	sub vcl_recv {
+		if (!tbf.rate("url:"+req.url, 1, 20 s, 5)) {
+			error 420 "Overlimit";
+		}
+		return (lookup);
+	}
+} -start
+
+client c1 {
+	txreq -url "/"
+	rxresp
+	expect resp.status == 200
+	txreq -url "/"
+	rxresp
+	expect resp.status == 200
+	txreq -url "/"
+	rxresp
+	expect resp.status == 200
+	txreq -url "/"
+	rxresp
+	expect resp.status == 200
+	txreq -url "/"
+	rxresp
+	expect resp.status == 200
+	txreq -url "/"
+	rxresp
+	expect resp.status == 420
+}
+
+client c1 -run
+
+
