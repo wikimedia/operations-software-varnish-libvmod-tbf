@@ -25,8 +25,8 @@
 #include "vcc_if.h"
 #include "bin/varnishd/cache.h"
 
-#ifdef VMODDEBUG
-# include <stdarg.h>
+static int debug_level;
+
 static void
 debugprt(const char *fmt, ...)
 {
@@ -35,10 +35,7 @@ debugprt(const char *fmt, ...)
 	vsyslog(LOG_DAEMON|LOG_DEBUG, fmt, ap);
 	va_end(ap);
 }
-#define debug(c) debugprt c
-#else
-# define debug(c)
-#endif
+#define debug(n,c) do { if (debug_level>=(n)) debugprt c; } while (0)
 
 #ifndef USEC_PER_SEC
 # define USEC_PER_SEC  1000000L
@@ -48,6 +45,7 @@ static char *dbname;
 static DB *db;
 static uint64_t autosync_max;
 static uint64_t autosync_count;
+static int tbf_disabled;
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 #define DBFILEMODE 0640
@@ -71,7 +69,8 @@ struct mode_kw {
 enum {
 	MKW_TRUNCATE,
 	MKW_MODE,
-	MKW_SYNC
+	MKW_SYNC,
+	MKW_DEBUG,
 };
 
 static struct mode_kw mode_kw_tab[] = {
@@ -80,6 +79,7 @@ static struct mode_kw mode_kw_tab[] = {
 	{ S(trunc), MKW_TRUNCATE },
 	{ S(mode=), MKW_MODE },
 	{ S(sync=), MKW_SYNC },
+	{ S(debug=), MKW_DEBUG },
 	{ NULL }
 #undef S
 };
@@ -95,7 +95,6 @@ tbf_open_internal(const char *mode)
 	
 	if (!dbname)
 		tbf_set_db_name(LOCALSTATEDIR "/tbf.db");
-	debug(("opening database %s", dbname));
 	
 	rc = db_create(&db, NULL, 0);
 	if (rc) {
@@ -146,8 +145,21 @@ tbf_open_internal(const char *mode)
 			} else {
 				autosync_max = n;
 				autosync_count = 0;
+				mode = p;
 			}
 			break;
+
+		case  MKW_DEBUG:
+			errno = 0;
+			n = strtoul(mode, &p, 10);
+			if (errno || !(*p == 0 || *p == ';')) {
+				syslog(LOG_DAEMON|LOG_ERR,
+				       "invalid debug level near %s", p);
+				mode += strlen(mode);
+			} else {
+				debug_level = n;
+				mode = p;
+			}			
 		}
 
 		if (*mode == 0)
@@ -161,18 +173,22 @@ tbf_open_internal(const char *mode)
 		}
 	}
 	
+	debug(1, ("opening database %s", dbname));
 	rc = db->open(db, NULL, dbname, NULL, DB_HASH, flags, filemode);
 	if (rc) {
 		syslog(LOG_DAEMON|LOG_ERR, "cannot open %s: %s",
 		       dbname, db_strerror (rc));
 		db->close(db, 0);
 		db = NULL;
+		tbf_disabled = 1;
 	}
 }
 
 static DB *
 tbf_open(const char *mode)
 {
+	if (tbf_disabled)
+		return 0;
 	pthread_mutex_lock(&mutex);
 	if (!db)
 		tbf_open_internal(mode ? mode : "truncate");
@@ -200,9 +216,10 @@ void
 vmod_close(struct sess *sp)
 {
 	if (db) {
-		debug(("closing database %s", dbname));
+		debug(1, ("closing database %s", dbname));
 		db->close(db, 0);
 		db = NULL;
+		tbf_disabled = 0;
 	}
 }
 
@@ -210,7 +227,7 @@ void
 vmod_sync(struct sess *sp)
 {
 	if (db) {
-		debug(("synchronizing database"));
+		debug(1, ("synchronizing database"));
 		db->sync(db, 0);
 	}
 }
@@ -252,7 +269,7 @@ vmod_rate(struct sess *sp, const char *key, int cost, double t, int burst_size)
 	int rc, res;
 	unsigned long interval = t * USEC_PER_SEC;
 	
-	debug(("entering rate(%s,%d,%g,%d)", key, cost, t, burst_size));
+	debug(2, ("entering rate(%s,%d,%g,%d)", key, cost, t, burst_size));
 		
 	if (interval == 0 || burst_size == 0)
 		return false;
@@ -299,9 +316,9 @@ vmod_rate(struct sess *sp, const char *key, int cost, double t, int burst_size)
 		else
 			bkt->tokens = (size_t)tokens;
 		
-		debug(("found, elapsed time: %"PRIu64" us, "
-		       "new tokens: %"PRIu64", total: %lu ",
-		       elapsed, tokens, (unsigned long) bkt->tokens));
+		debug(2, ("found, elapsed time: %"PRIu64" us, "
+			  "new tokens: %"PRIu64", total: %lu ",
+			  elapsed, tokens, (unsigned long) bkt->tokens));
 		break;
 
 	case DB_NOTFOUND:
@@ -320,10 +337,11 @@ vmod_rate(struct sess *sp, const char *key, int cost, double t, int burst_size)
 	if (cost <= bkt->tokens) {
 		res = 1;
 		bkt->tokens -= cost;
-		debug(("tbf_rate matched %s", key));
+		debug(2, ("tbf_rate matched %s, tokens left %z", key,
+			  bkt->tokens));
 	} else {
 		res = 0;
-		debug(("tbf_rate overlimit on %s", key));
+		debug(1, ("tbf_rate overlimit on %s", key));
 	}
 
 	/* Update the db */
@@ -340,7 +358,7 @@ vmod_rate(struct sess *sp, const char *key, int cost, double t, int burst_size)
 		free(bkt);
 
 	if (autosync_max && ++autosync_count >= autosync_max) {
-		debug(("synchronizing database"));
+		debug(1, ("synchronizing database"));
 		db->sync(db, 0);
 		autosync_count = 0;
 	}
