@@ -348,7 +348,7 @@ vmod_rate(struct sess *sp, const char *key, int cost, double t, int burst_size)
 	content.data = (void*) bkt;
 	content.size = sizeof(*bkt);
 
-	rc = db->put (db, NULL, &keydat, &content, 0);
+	rc = db->put(db, NULL, &keydat, &content, 0);
 	if (rc) {
 		syslog(LOG_DAEMON|LOG_ERR, "error updating key %s: %s",
 		       key, db_strerror(rc));

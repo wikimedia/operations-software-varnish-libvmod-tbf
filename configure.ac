@@ -42,6 +42,10 @@ PKG_PROG_PKG_CONFIG
 
 # Checks for header files.
 AC_HEADER_STDC
+AC_CHECK_HEADERS(sys/sysinfo.h)
+
+# Check for functions
+AC_CHECK_FUNCS(sysinfo getloadavg)
 
 # Check for python
 AC_CHECK_PROGS(PYTHON, [python], [

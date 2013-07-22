@@ -1,6 +1,7 @@
 VMOD_TESTS = \
  test00.vtc\
- test01.vtc
+ test01.vtc\
+ time00.vtc
 
 EXTRA_DIST=$(VMOD_TESTS)
 DISTCLEANFILES=tbf.db

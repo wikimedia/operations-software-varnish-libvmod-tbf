@@ -26,6 +26,8 @@ libvmod_tbf_la_LDFLAGS=-module -export-dynamic -avoid-version
 libvmod_tbf_la_LIBADD=
 
 libvmod_tbf_la_SOURCES = \
+        getla.c\
+        time.c\
 	vmod_tbf.c\
 	vcc_if.c vcc_if.h
 
