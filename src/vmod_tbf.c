@@ -175,7 +175,7 @@ tbf_open(const char *mode)
 {
 	pthread_mutex_lock(&mutex);
 	if (!db)
-		tbf_open_internal(mode ? mode : "w");
+		tbf_open_internal(mode ? mode : "truncate");
 	pthread_mutex_unlock(&mutex);
 	return db;
 }
@@ -189,7 +189,7 @@ void
 vmod_open(struct sess *sp, const char *file_name, const char *mode)
 {
 	if (db) {
-		syslog(LOG_DAEMON|LOG_ERR, "tbf.config called twice");
+		syslog(LOG_DAEMON|LOG_ERR, "tbf.open called twice");
 		return;
 	}
 	tbf_set_db_name(file_name);
@@ -268,7 +268,9 @@ vmod_rate(struct sess *sp, const char *key, int cost, double t, int burst_size)
 	}
 
 	db = tbf_open(NULL);
-
+	if (!db)
+		return false;
+	
 	memset(&keydat, 0, sizeof keydat);
 	keydat.data = (void*) key;
 	keydat.size = strlen(key);
