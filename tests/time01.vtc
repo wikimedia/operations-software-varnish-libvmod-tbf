@@ -1,0 +1,23 @@
+varnishtest "Test strftime"
+
+server s1 {
+       rxreq
+       txresp
+} -start
+
+varnish v1 -vcl+backend {
+	import tbf from "${vmod_topbuild}/src/.libs/libvmod_tbf.so";
+	sub vcl_deliver {
+		set resp.http.result = tbf.strftime("%Y-%m-%d", tbf.systime());
+	}
+} -start
+
+client c1 {
+	txreq
+	rxresp
+	expect resp.http.result == 2013
+}
+
+client c1 -run
+
+

@@ -337,8 +337,8 @@ vmod_rate(struct sess *sp, const char *key, int cost, double t, int burst_size)
 	if (cost <= bkt->tokens) {
 		res = 1;
 		bkt->tokens -= cost;
-		debug(2, ("tbf_rate matched %s, tokens left %z", key,
-			  bkt->tokens));
+		debug(2, ("tbf_rate matched %s, tokens left %lu", key,
+			  (unsigned long)bkt->tokens));
 	} else {
 		res = 0;
 		debug(1, ("tbf_rate overlimit on %s", key));
@@ -364,4 +364,71 @@ vmod_rate(struct sess *sp, const char *key, int cost, double t, int burst_size)
 	}
 	
 	return res;
+}
+
+#define ISWS(c) ((c)==' '||(c)=='\t')
+
+unsigned
+vmod_check(struct sess *sp, const char *key, const char *spec)
+{
+	double t, v, n;
+	char *p;
+#define SKIPWS(init) for (init; *spec && ISWS(*spec); spec++)
+	int burst;
+	
+	errno = 0;
+	v = strtod(spec, &p);
+	if (errno || v < 0) {
+		syslog(LOG_DAEMON|LOG_ERR, "bad rate: %s", spec);
+		return false;
+	}
+	SKIPWS(spec = p);
+	if (strncmp(spec, "req", 3)) {
+		syslog(LOG_DAEMON|LOG_ERR,
+		       "bad rate: expected \"req\", but found \"%s\"", spec);
+		return false;
+	}
+	SKIPWS(spec += 3);
+	if (*spec != '/') {
+		syslog(LOG_DAEMON|LOG_ERR,
+		       "bad rate: expected \"/\", but found \"%c\"", *spec);
+		return false;
+	}
+	SKIPWS(++spec);
+	if (*spec >= '0' && *spec <= '9') {
+		errno = 0;
+		n = strtod(spec, &p);
+		if (errno || n < 0) {
+			syslog(LOG_DAEMON|LOG_ERR, "bad interval: %s", spec);
+			return false;
+		}
+		spec = p;
+	} else
+		n = 1;
+	SKIPWS();
+
+	switch (*spec) {
+	case 0:
+	case 's':
+		break;
+	case 'd':
+		n *= 24;
+	case 'h':
+		n *= 60;
+	case 'm':
+		n *= 60;
+		break;
+	default:
+		syslog(LOG_DAEMON|LOG_ERR, "invalid interval specifier: %s",
+		       spec);
+		return false;
+	}
+
+	SKIPWS(++spec);
+
+	if (*spec)
+		syslog(LOG_DAEMON|LOG_WARNING, "garbage after rate spec: %s",
+		       spec);
+
+	return vmod_rate(sp, key, 1, n/v, v/n+1);
 }
