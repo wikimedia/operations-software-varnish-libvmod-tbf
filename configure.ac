@@ -17,7 +17,7 @@ AC_PREREQ(2.69)
 AC_INIT([vmod-tbf], 0.99.90, [gray@gnu.org])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_MACRO_DIR([m4])
-AC_CONFIG_SRCDIR(src/vmod_tbf.c)
+AC_CONFIG_SRCDIR(src/vmod_tbf.vcc)
 AM_CONFIG_HEADER(config.h)
 
 AC_CANONICAL_SYSTEM

@@ -19,6 +19,8 @@ AM_CPPFLAGS=\
  -I$(VARNISHSRC)\
  -DLOCALSTATEDIR=\"$(localstatedir)\"
 
+dist_man_MANS=vmod-tbf.3 vmod_tbf.3
+
 vmoddir = $(VMODDIR)
 vmod_LTLIBRARIES = libvmod_tbf.la
 
@@ -28,7 +30,7 @@ libvmod_tbf_la_LIBADD=
 libvmod_tbf_la_SOURCES = \
         getla.c\
         time.c\
-	vmod_tbf.c\
+	tbf.c\
 	vcc_if.c vcc_if.h
 
 BUILT_SOURCES = vcc_if.c vcc_if.h

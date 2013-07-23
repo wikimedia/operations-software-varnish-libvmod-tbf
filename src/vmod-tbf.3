@@ -1,0 +1,215 @@
+.\" This file is part of Vmod-tbf -*- nroff -*-
+.\" Copyright (C) 2013 Sergey Poznyakoff
+.\"
+.\" Vmod-tbf is free software; you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation; either version 3, or (at your option)
+.\" any later version.
+.\"
+.\" Vmod-tbf is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\"
+.\" You should have received a copy of the GNU General Public License
+.\" along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
+.TH VMOD_TBF 1 "July 23, 2013" "VMOD_TBF" "User Reference"
+.SH NAME
+vmod-tbf \- token bucket filtering for Varnish
+.SH SYNOPSIS
+.B import tbf;
+
+.BI "VOID tbf.open(STRING " dbfile ", STRING " params ");"
+
+.B VOID tbf.close();
+
+.BI "BOOL tbf.rate(STRING " key ", INT " COST ", DURATION " interval ", INT " burst_size)"
+
+.BI "BOOL tbf.check(STRING " key ", STRING " rate ");"
+
+.BI "REAL tbf.getla(INT " sample ");"
+
+.BI "INT tbf.systime();"
+
+.BI "STRING tbf.strftime(STRING " format ", INT " timestamp ");"
+
+.SH DESCRIPTION
+The
+.B vmod-tbf
+module implements \fBtoken bucket filtering\fR for
+.BR "Varnish Cache" .
+It also implements several unrelated functions.
+.SS Rate control functions
+.PP
+In this implementation of the token bucket algorithm, each bucket is
+associated with a \fBkey\fR (a string value uniquely identifying this
+bucket).  The algorithm works as follows:
+.TP
+.B \(bu
+A token is added to the bucket at a constant rate of 1 token
+per \fIinterval\fR microseconds.
+.TP
+.B \(bu
+A bucket can hold at most
+\fIburst_size\fR tokens.  Any tokens arriving when the bucket is full
+are discarded.
+.TP
+.B \(bu
+When \fIcost\fR items of data arrive, \fIcost\fR tokens are removed
+from the bucket and the data are accepted.
+.TP
+.B \(bu
+If fewer than \fIcost\fR tokens are available, no tokens are removed from
+the bucket and the data are not accepted.
+.PP
+This keeps the data traffic at a constant rate or \fIcost\fR items
+per \fIinterval\fR microseconds with bursts of up to \fIburst_size\fR
+items.  Such bursts occur when no data was being arrived for
+\fIburst_size*interval\fR or more microseconds.
+.PP
+The function \fBtbf.rate\fR provides a low-level interface to this
+algorithm.  Its arguments correspond exactly to the values used in
+the above description.  The \fBkey\fR argument identifies the bucket.
+The function returns \fBTRUE\fR if the data are accepted and
+\fBFALSE\fR otherwise.  The sample usage is:
+.PP
+.nf
+.in +2
+sub vcl_recv {
+    if (!tbf.rate("ip:" + client.ip, 1, 0.1s, 20)) {
+        error 429 "Request rate exceeded."
+    }
+}
+.in
+.fi
+.PP
+This example will keep the incoming requests at the rate of 10 requests
+per second, allowing for bursts of up to 20 requests after each 2
+second (or longer) period of inactivity.
+.PP
+The \fBtbf.check\fR function provides a higher-level interface.  Its
+first argument identifies the bucket.  The \fIrate\fR argument is a
+textual rate specification in the form:
+.PP
+.nf
+.in +2
+.BI "" N req/ K "" U
+.in
+.fi
+.PP
+where \fIN\fR and \fIK\fR are floating-point numbers, and \fIU\fR is
+an optional unit specifier: \fBs\fR, \fBm\fR, \fBh\fR or \fBd\fR for
+seconds, minutes, hours or days, correspondingly.  The parts of the
+rate specification can be separated by any amount of whitespace.
+.PP
+For example, the following statement will limit the request rate to
+ten and a half requests per second:
+.PP
+.nf
+.in +2
+sub vcl_recv {
+    if (!tbf.check(client.ip, "10.5 req/1s")) {
+        error 429 "Request rate exceeded."
+    }
+}
+.in
+.fi
+.SS Storage
+.PP
+Buckets are kept in a Berkeley DB file.  The \fBtbf.open\fR function
+controls its location and permissions.  The \fBdbfile\fR argument
+supplies the full pathname to the file.  The \fBparams\fR argument is
+a semicolon separated list of the following parameters:
+.TP
+.BR truncate " or " trunc
+Truncate the file if it already exists.
+.TP
+.BI mode= OCT
+Set the file mode.  \fIOCT\fR is an octal number.  The default file
+mode is \fB640\fR.  Note that this parameter takes effect only when
+creating the file.  If the database file already exists by the time
+\fBtbf.open\fR is called, its mode will not be altered.
+.TP
+.BI sync= N
+Synchronize the database with the disk after each \fBN\fR writes.
+.TP
+.BI debug= N
+Set debugging level.
+.PP
+Normally, this function should be called only once, from the
+\fBvcl_init\fR subroutine:
+.PP
+.nf
+.in +2
+sub vcl_init {
+    tbf.open("/var/run/varnish/tbf.db", "mode=600");
+}
+.in
+.fi
+.PP
+Note that the directory where the database file is located must be
+writable for the user \fBVarnish\fR runs as.
+.PP
+Unless the \fBtbf.open\fR function was called, both \fBtbf.rate\fR and
+\fBtbf.check\fR will attempt to use the file \fIlocalstatedir\fB/tbf.db\fR,
+where \fIlocalstatedir\fR is the directory for modifiable
+single-machine data, which is set when configuring the package
+(e.g. \fB/var/run/tbf\fR or the like).
+.PP
+The \fBtbf.close\fR function flushes the data and closes the database.
+It is normally called from the \fBvcl_fini\fR subroutine:
+.PP
+.nf
+.in +2
+sub vcl_fini {
+    tbf.close();
+}
+.in
+.fi
+.SS Other functions
+.PP
+Several functions are provided that do not exactly belong to the
+TBF algorithm, but which may come useful when implementing rate
+control.
+.PP
+The \fBtbf.getla\fR function returns the system load average.  Its
+argument identifies the interval for which to compute it: 1, 5 or
+15 minutes.
+.PP
+The \fBtbf.systime\fR function returns the current time of day as the
+number of seconds since the Epoch (1970-01-01 00:00:00 UTC).
+.PP
+The \fBtbf.strftime\fR function formats the \fBtimestamp\fR according
+to the specification in \fBformat\fR.  See
+.BR strftime (3),
+for a description of available formats.  For example, the following
+call will return current year as a string:
+.PP
+.nf
+.in +2
+tbf.strftime("%Y", systime());
+.in
+.fi
+.SH "SEE ALSO"
+.BR vcl (7),
+.BR varnishd (1).
+.SH AUTHORS
+Sergey Poznyakoff
+.SH "BUG REPORTS"
+Report bugs to <gray@gnu.org>.
+.SH COPYRIGHT
+Copyright \(co 2013 Sergey Poznyakoff
+.br
+.na
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+.br
+.ad
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+.\" Local variables:
+.\" eval: (add-hook 'write-file-hooks 'time-stamp)
+.\" time-stamp-start: ".TH [A-Z_][A-Z0-9_.-]* [0-9] \""
+.\" time-stamp-format: "%:B %:d, %:y"
+.\" time-stamp-end: "\""
+.\" time-stamp-line-limit: 20
+.\" end:

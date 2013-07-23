@@ -1,0 +1,4 @@
+Vmod-tbf THANKS file.
+
+Thanks to John McEleney and Ben McKeegan who provided TBF implementation
+for Mailfromd, which I used as an example when writing this module.
