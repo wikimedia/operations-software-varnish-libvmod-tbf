@@ -13,7 +13,7 @@
 .\"
 .\" You should have received a copy of the GNU General Public License
 .\" along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
-.TH VMOD_TBF 1 "July 23, 2013" "VMOD_TBF" "User Reference"
+.TH VMOD-TBF 1 "July 23, 2013" "VMOD-TBF" "User Reference"
 .SH NAME
 vmod-tbf \- token bucket filtering for Varnish
 .SH SYNOPSIS
@@ -73,15 +73,13 @@ the above description.  The \fBkey\fR argument identifies the bucket.
 The function returns \fBTRUE\fR if the data are accepted and
 \fBFALSE\fR otherwise.  The sample usage is:
 .PP
-.nf
-.in +2
+.EX
 sub vcl_recv {
     if (!tbf.rate("ip:" + client.ip, 1, 0.1s, 20)) {
         error 429 "Request rate exceeded."
     }
 }
-.in
-.fi
+.EE 
 .PP
 This example will keep the incoming requests at the rate of 10 requests
 per second, allowing for bursts of up to 20 requests after each 2
@@ -91,11 +89,7 @@ The \fBtbf.check\fR function provides a higher-level interface.  Its
 first argument identifies the bucket.  The \fIrate\fR argument is a
 textual rate specification in the form:
 .PP
-.nf
-.in +2
 .BI "" N req/ K "" U
-.in
-.fi
 .PP
 where \fIN\fR and \fIK\fR are floating-point numbers, and \fIU\fR is
 an optional unit specifier: \fBs\fR, \fBm\fR, \fBh\fR or \fBd\fR for
@@ -105,15 +99,13 @@ rate specification can be separated by any amount of whitespace.
 For example, the following statement will limit the request rate to
 ten and a half requests per second:
 .PP
-.nf
-.in +2
+.EX
 sub vcl_recv {
     if (!tbf.check(client.ip, "10.5 req/1s")) {
         error 429 "Request rate exceeded."
     }
 }
-.in
-.fi
+.EE
 .SS Storage
 .PP
 Buckets are kept in a Berkeley DB file.  The \fBtbf.open\fR function
@@ -139,13 +131,11 @@ Set debugging level.
 Normally, this function should be called only once, from the
 \fBvcl_init\fR subroutine:
 .PP
-.nf
-.in +2
+.EX
 sub vcl_init {
     tbf.open("/var/run/varnish/tbf.db", "mode=600");
 }
-.in
-.fi
+.EE
 .PP
 Note that the directory where the database file is located must be
 writable for the user \fBVarnish\fR runs as.
@@ -159,13 +149,11 @@ single-machine data, which is set when configuring the package
 The \fBtbf.close\fR function flushes the data and closes the database.
 It is normally called from the \fBvcl_fini\fR subroutine:
 .PP
-.nf
-.in +2
+.EX
 sub vcl_fini {
     tbf.close();
 }
-.in
-.fi
+.EE
 .SS Other functions
 .PP
 Several functions are provided that do not exactly belong to the
@@ -183,13 +171,17 @@ The \fBtbf.strftime\fR function formats the \fBtimestamp\fR according
 to the specification in \fBformat\fR.  See
 .BR strftime (3),
 for a description of available formats.  For example, the following
-call will return current year as a string:
+statements assigns the current year to the \f(CWX\-Year\fR header:
 .PP
-.nf
-.in +2
-tbf.strftime("%Y", systime());
-.in
-.fi
+.EX
+set req.http.X-Year = tbf.strftime("%Y", systime());
+.EE
+.\" The INCFILE variable is set by man.cgi script on Ulysses when
+.\" it finds the vmod-tbf.3.inc file located in the same directory
+.\" as this one.
+.if !"\V[INCFILE]"" \{\
+.so \V[INCFILE]
+\}
 .SH "SEE ALSO"
 .BR vcl (7),
 .BR varnishd (1).
