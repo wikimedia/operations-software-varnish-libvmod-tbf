@@ -13,13 +13,13 @@
 .\"
 .\" You should have received a copy of the GNU General Public License
 .\" along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
-.TH VMOD-TBF 1 "July 23, 2013" "VMOD-TBF" "User Reference"
+.TH VMOD-TBF 1 "August 2, 2013" "VMOD-TBF" "User Reference"
 .SH NAME
 vmod-tbf \- token bucket filtering for Varnish
 .SH SYNOPSIS
 .B import tbf;
 
-.BI "VOID tbf.open(STRING " dbfile ", STRING " params ");"
+.BI "VOID tbf.open(STRING " dbdir ", STRING " params ");"
 
 .B VOID tbf.close();
 
@@ -108,13 +108,17 @@ sub vcl_recv {
 .EE
 .SS Storage
 .PP
-Buckets are kept in a Berkeley DB file.  The \fBtbf.open\fR function
-controls its location and permissions.  The \fBdbfile\fR argument
-supplies the full pathname to the file.  The \fBparams\fR argument is
-a semicolon separated list of the following parameters:
+Buckets are kept in a Berkeley database file.  The \fBtbf.open\fR function
+controls its location and permissions.  The \fBdbdir\fR argument
+supplies the full pathname to the directory where the database is
+located.  The \fBparams\fR argument is a semicolon separated list of
+the following parameters:
+.TP
+.BI dbname= NAME
+Sets the name of the database file.  Default is \fBtbf.bdb\fR.
 .TP
 .BR truncate " or " trunc
-Truncate the file if it already exists.
+Truncate the database if it already exists.
 .TP
 .BI mode= OCT
 Set the file mode.  \fIOCT\fR is an octal number.  The default file
@@ -141,10 +145,16 @@ Note that the directory where the database file is located must be
 writable for the user \fBVarnish\fR runs as.
 .PP
 Unless the \fBtbf.open\fR function was called, both \fBtbf.rate\fR and
-\fBtbf.check\fR will attempt to use the file \fIlocalstatedir\fB/tbf.db\fR,
-where \fIlocalstatedir\fR is the directory for modifiable
-single-machine data, which is set when configuring the package
-(e.g. \fB/var/run/tbf\fR or the like).
+\fBtbf.check\fR will attempt to use the database located in
+\fIlocalstatedir\fB/vmod-tbf\fR, where \fIlocalstatedir\fR is the
+directory for modifiable single-machine data, which is set when
+configuring the package (e.g. \fB/var/run\fR or the like).
+.PP
+If the database directory does not exist, \fBtbf.open\fR will attempt
+to create it, deducing its mode from the database file mode (see the
+\fBmode=\fR parameter above) by setting executable 
+bit in each triplet that has read or write bit set (e.g. \fB640\fR
+will become \fB750\fR).
 .PP
 The \fBtbf.close\fR function flushes the data and closes the database.
 It is normally called from the \fBvcl_fini\fR subroutine:

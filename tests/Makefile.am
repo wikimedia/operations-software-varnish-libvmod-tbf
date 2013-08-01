@@ -6,7 +6,9 @@ VMOD_TESTS = \
  time00.vtc
 
 EXTRA_DIST=$(VMOD_TESTS)
-DISTCLEANFILES=tbf.db
+distclean-local:
+	rm -fr tbf
+
 check:
 	cd $(abs_srcdir); \
 	for t in $(VMOD_TESTS); do \

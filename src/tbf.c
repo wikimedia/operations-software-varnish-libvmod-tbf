@@ -20,6 +20,7 @@
 #include <stdbool.h>
 #include <syslog.h>
 #include <inttypes.h>
+#include <sys/stat.h>
 #include <db.h>
 #include "vrt.h"
 #include "vcc_if.h"
@@ -41,14 +42,19 @@ debugprt(const char *fmt, ...)
 # define USEC_PER_SEC  1000000L
 #endif
 
+#define DEFDBNAME "tbf.bdb"
+#define DEFOPENPARAMS "truncate"
+#define DBFILEMODE 0640
+
+static char *dbdir;
 static char *dbname;
+static DB_ENV *dbenv;
 static DB *db;
 static uint64_t autosync_max;
 static uint64_t autosync_count;
 static int tbf_disabled;
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-#define DBFILEMODE 0640
 
 
 /* The keylock structure serializes accesses to each db record, ensuring
@@ -122,147 +128,217 @@ keylock_remove_safe(struct keylock *kp)
 }
 
 static void
-tbf_set_db_name(const char *file_name)
+tbf_set_db_dir(const char *dir)
 {
-	if (dbname)
-		free(dbname);
-	dbname = strdup(file_name);
-	if (!dbname)
-		abort();
+	if (dbdir)
+		free(dbdir);
+	dbdir = strdup(dir);
+	AN(dbdir);
 }
 
-struct mode_kw {
-	char *mkw_str;
-	int mkw_len;
-	int mkw_tok;
+struct param_kw {
+	char *pkw_str;
+	int pkw_len;
+	int pkw_tok;
 };
 
 enum {
-	MKW_TRUNCATE,
-	MKW_MODE,
-	MKW_SYNC,
-	MKW_DEBUG,
+	PKW_TRUNCATE,
+	PKW_MODE,
+	PKW_SYNC,
+	PKW_DEBUG,
+	PKW_DBNAME
 };
 
-static struct mode_kw mode_kw_tab[] = {
+static struct param_kw param_kw_tab[] = {
 #define S(s) #s, sizeof(#s)-1
-	{ S(truncate), MKW_TRUNCATE },
-	{ S(trunc), MKW_TRUNCATE },
-	{ S(mode=), MKW_MODE },
-	{ S(sync=), MKW_SYNC },
-	{ S(debug=), MKW_DEBUG },
+	{ S(truncate), PKW_TRUNCATE },
+	{ S(trunc), PKW_TRUNCATE },
+	{ S(mode=), PKW_MODE },
+	{ S(sync=), PKW_SYNC },
+	{ S(debug=), PKW_DEBUG },
+	{ S(dbname=), PKW_DBNAME },
 	{ NULL }
 #undef S
 };
 
 static void
-tbf_open(const char *mode)
+tbf_open(const char *params)
 {
 	int rc;
-	int flags = DB_CREATE|DB_THREAD;
 	int filemode = DBFILEMODE;
 	uint64_t n;
 	char *p;
+	struct stat st;
+	int truncate = 0;
 	
-	if (!dbname)
-		tbf_set_db_name(LOCALSTATEDIR "/tbf.db");
+	if (!dbdir) {
+		dbdir = strdup(LOCALSTATEDIR "/vmod-tbf");
+		AN(dbdir);
+	}
+	if (!dbname) {
+		dbname = strdup(DEFDBNAME);
+		AN(dbname);
+	}
 	
-	rc = db_create(&db, NULL, 0);
+	while (*params) {
+		struct param_kw *pkw;
+		
+		for (pkw = param_kw_tab; pkw->pkw_str; pkw++) {
+			if (strncmp(params, pkw->pkw_str, pkw->pkw_len) == 0)
+				break;
+		}
+
+		if (!pkw->pkw_str) {
+			syslog(LOG_DAEMON|LOG_ERR, "invalid keyword %s", params);
+			break;
+		}
+
+		params += pkw->pkw_len;
+		
+		switch (pkw->pkw_tok) {
+		case PKW_TRUNCATE:
+			truncate = 1;
+			break;
+
+		case PKW_MODE:
+			errno = 0;
+			n = strtoul(params, &p, 8);
+			if (errno || (n & ~0777) || !(*p == 0 || *p == ';')) {
+				syslog(LOG_DAEMON|LOG_ERR,
+				       "invalid file mode near %s", p);
+				params += strlen(params);
+			} else {
+				filemode = n;
+				params = p;
+			}
+			break;
+
+		case PKW_SYNC:
+			errno = 0;
+			n = strtoul(params, &p, 10);
+			if (errno || !(*p == 0 || *p == ';')) {
+				syslog(LOG_DAEMON|LOG_ERR,
+				       "invalid count near %s", p);
+				params += strlen(params);
+			} else {
+				autosync_max = n;
+				autosync_count = 0;
+				params = p;
+			}
+			break;
+
+		case  PKW_DEBUG:
+			errno = 0;
+			n = strtoul(params, &p, 10);
+			if (errno || !(*p == 0 || *p == ';')) {
+				syslog(LOG_DAEMON|LOG_ERR,
+				       "invalid debug level near %s", p);
+				params += strlen(params);
+			} else {
+				debug_level = n;
+				params = p;
+			}
+			break;
+
+		case PKW_DBNAME:
+			if (dbname)
+				free(dbname);
+			n = strcspn(params, ";");
+			dbname = malloc(n + 1);
+			AN(dbname);
+			memcpy(dbname, params, n);
+			dbname[n] = 0;
+			params += n;
+			break;
+		}
+
+		if (*params == 0)
+			break;
+		else if (*params == ';')
+			params++;
+		else {
+			syslog(LOG_DAEMON|LOG_ERR,
+			       "expected ';' near %s", params);
+			break;
+		}
+	}
+	
+	debug(1, ("opening database %s/%s", dbdir, dbname));
+
+	if (rc = db_env_create(&dbenv, 0)) {
+		syslog(LOG_DAEMON|LOG_ERR, "cannot create db environment: %s",
+		       db_strerror(rc));
+		return;
+	}
+
+	if (stat(dbdir, &st)) {
+		if (errno == ENOENT) {
+			if (mkdir(dbdir,
+				  filemode | 0100 |
+				  ((filemode & 0060) ? 0010 : 0) |
+				  ((filemode & 0006) ? 0001 : 0))) {
+				syslog(LOG_DAEMON|LOG_ERR,
+				       "cannot create db environment directory %s: %m",
+				       dbdir);
+			}
+		} else {
+			syslog(LOG_DAEMON|LOG_ERR,
+			       "cannot stat db environment directory %s: %m",
+			       dbdir);
+			return;
+		}
+	} else if (!S_ISDIR(st.st_mode)) {
+		syslog(LOG_DAEMON|LOG_ERR, "%s is not a directory",
+		       dbdir);
+		return;
+	}
+	
+	rc = dbenv->open(dbenv, dbdir,
+			 DB_THREAD | DB_CREATE | DB_INIT_MPOOL | DB_INIT_CDB,
+			 0);
+	if (rc) {
+		syslog(LOG_DAEMON|LOG_ERR, "cannot open db environment %s: %s",
+		       dbdir, db_strerror(rc));
+		tbf_disabled = 1;
+		return;
+	}
+	
+	rc = db_create(&db, dbenv, 0);
 	if (rc) {
 		syslog(LOG_DAEMON|LOG_ERR, "cannot create db struct");
 		return;
 	}
 
-	while (*mode) {
-		struct mode_kw *mkw;
-		
-		for (mkw = mode_kw_tab; mkw->mkw_str; mkw++) {
-			if (strncmp(mode, mkw->mkw_str, mkw->mkw_len) == 0)
-				break;
-		}
-
-		if (!mkw->mkw_str) {
-			syslog(LOG_DAEMON|LOG_ERR, "invalid keyword %s", mode);
-			break;
-		}
-
-		mode += mkw->mkw_len;
-		
-		switch (mkw->mkw_tok) {
-		case MKW_TRUNCATE:
-			flags |= DB_TRUNCATE;
-			break;
-
-		case MKW_MODE:
-			errno = 0;
-			n = strtoul(mode, &p, 8);
-			if (errno || (n & ~0777) || !(*p == 0 || *p == ';')) {
-				syslog(LOG_DAEMON|LOG_ERR,
-				       "invalid file mode near %s", p);
-				mode += strlen(mode);
-			} else {
-				filemode = n;
-				mode = p;
-			}
-			break;
-
-		case MKW_SYNC:
-			errno = 0;
-			n = strtoul(mode, &p, 10);
-			if (errno || !(*p == 0 || *p == ';')) {
-				syslog(LOG_DAEMON|LOG_ERR,
-				       "invalid count near %s", p);
-				mode += strlen(mode);
-			} else {
-				autosync_max = n;
-				autosync_count = 0;
-				mode = p;
-			}
-			break;
-
-		case  MKW_DEBUG:
-			errno = 0;
-			n = strtoul(mode, &p, 10);
-			if (errno || !(*p == 0 || *p == ';')) {
-				syslog(LOG_DAEMON|LOG_ERR,
-				       "invalid debug level near %s", p);
-				mode += strlen(mode);
-			} else {
-				debug_level = n;
-				mode = p;
-			}			
-		}
-
-		if (*mode == 0)
-			break;
-		else if (*mode == ';')
-			mode++;
-		else {
-			syslog(LOG_DAEMON|LOG_ERR,
-			       "expected ';' near %s", mode);
-			break;
-		}
-	}
-	
-	debug(1, ("opening database %s", dbname));
-	rc = db->open(db, NULL, dbname, NULL, DB_HASH, flags, filemode);
+	rc = db->open(db, NULL, dbname, NULL, DB_HASH,
+		      DB_THREAD | DB_CREATE, filemode);
 	if (rc) {
-		syslog(LOG_DAEMON|LOG_ERR, "cannot open %s: %s",
+		syslog(LOG_DAEMON|LOG_ERR, "cannot open database %s: %s",
 		       dbname, db_strerror (rc));
 		db->close(db, 0);
 		db = NULL;
+		dbenv->close(dbenv, 0);
+		dbenv = NULL;
 		tbf_disabled = 1;
 	}
+
+	if (truncate) {
+		rc = db->truncate(db, NULL, NULL, 0);
+		if (rc)
+			syslog(LOG_DAEMON|LOG_WARNING,
+			       "failed to truncate database %s: %s",
+			       dbname, db_strerror(rc));
+	}	
 }
 
 static DB *
-tbf_open_safe(const char *mode)
+tbf_open_safe(const char *params)
 {
 	if (tbf_disabled)
 		return NULL;
 	pthread_mutex_lock(&mutex);
 	if (!db)
-		tbf_open(mode ? mode : "truncate");
+		tbf_open(params ? params : DEFOPENPARAMS);
 	pthread_mutex_unlock(&mutex);
 	return db;
 }
@@ -275,25 +351,29 @@ tbf_init(struct vmod_priv *priv, const struct VCL_conf *vclconf)
 }
 
 void
-vmod_open(struct sess *sp, const char *file_name, const char *mode)
+vmod_open(struct sess *sp, const char *dir, const char *params)
 {
 	if (db) {
 		syslog(LOG_DAEMON|LOG_ERR, "tbf.open called twice");
 		return;
 	}
-	tbf_set_db_name(file_name);
-	tbf_open_safe(mode);
+	tbf_set_db_dir(dir);
+	tbf_open_safe(params);
 }
 
 void
 vmod_close(struct sess *sp)
 {
+	pthread_mutex_lock(&mutex);
 	if (db) {
 		debug(1, ("closing database %s", dbname));
 		db->close(db, 0);
 		db = NULL;
+		dbenv->close(dbenv, 0);
+		dbenv = NULL;
 		tbf_disabled = 0;
 	}
+	pthread_mutex_unlock(&mutex);
 }
 
 void

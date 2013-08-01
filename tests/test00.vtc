@@ -8,7 +8,7 @@ server s1 {
 varnish v1 -vcl+backend {
 	import tbf from "${vmod_topbuild}/src/.libs/libvmod_tbf.so";
 	sub vcl_init {
-		tbf.open("${vmod_topbuild}/tests/tbf.db", "truncate");
+		tbf.open("${vmod_topbuild}/tests/tbf", "truncate");
 	}
 	sub vcl_fini {
 		tbf.close();
