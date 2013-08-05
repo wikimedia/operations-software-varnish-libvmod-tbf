@@ -25,23 +25,9 @@
 #include "vrt.h"
 #include "vcc_if.h"
 
-double
-vmod_getla(struct sess *sp, int what)
+static double
+sys_getla(int what)
 {
-	switch (what) {
-	case 1:
-		what = 0;
-		break;
-	case 5:
-		what = 1;
-		break;
-	case 15:
-		what = 2;
-		break;
-	default:
-		what = 0;
-	}
-	
 #if defined(HAVE_GETLOADAVG)
 	double loadavg[3];
 	
@@ -62,4 +48,23 @@ vmod_getla(struct sess *sp, int what)
 	syslog(LOG_DAEMON|LOG_CRIT, "tbf.getla is not implemented");
 	return 0.0;
 #endif	
+}
+
+double
+vmod_getla(struct sess *sp, int what)
+{
+	switch (what) {
+	case 1:
+		what = 0;
+		break;
+	case 5:
+		what = 1;
+		break;
+	case 15:
+		what = 2;
+		break;
+	default:
+		what = 0;
+	}
+	return sys_getla(what);
 }
