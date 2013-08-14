@@ -13,7 +13,7 @@
 .\"
 .\" You should have received a copy of the GNU General Public License
 .\" along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
-.TH VMOD-TBF 1 "August 2, 2013" "VMOD-TBF" "User Reference"
+.TH VMOD-TBF 1 "August 14, 2013" "VMOD-TBF" "User Reference"
 .SH NAME
 vmod-tbf \- token bucket filtering for Varnish
 .SH SYNOPSIS
@@ -32,6 +32,8 @@ vmod-tbf \- token bucket filtering for Varnish
 .BI "INT tbf.systime();"
 
 .BI "STRING tbf.strftime(STRING " format ", INT " timestamp ");"
+
+.BI "VOID tbf.sleep(DURATION " time ");"
 
 .SH DESCRIPTION
 The
@@ -186,6 +188,9 @@ statements assigns the current year to the \f(CWX\-Year\fR header:
 .EX
 set req.http.X-Year = tbf.strftime("%Y", systime());
 .EE
+.PP
+The \fBtbf.sleep\fR function suspends execution for a specified amount
+of time.
 .\" The INCFILE variable is set by man.cgi script on Ulysses when
 .\" it finds the vmod-tbf.3.inc file located in the same directory
 .\" as this one.

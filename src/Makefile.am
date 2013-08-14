@@ -29,6 +29,7 @@ libvmod_tbf_la_LIBADD=
 
 libvmod_tbf_la_SOURCES = \
         getla.c\
+        sleep.c\
         time.c\
 	tbf.c\
 	vcc_if.c vcc_if.h
