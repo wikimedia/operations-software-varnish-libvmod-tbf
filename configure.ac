@@ -78,20 +78,19 @@ AC_CHECK_FILE([$VARNISHSRC/bin/varnishtest/varnishtest],
 )
 
 # vmod installation dir
-AC_ARG_VAR([VMODDIR],
-  [vmod installation directory @<:@LIBDIR/varnish/vmods@:>@])
-AC_ARG_WITH([vmod-dir],
-  AC_HELP_STRING([--with-vmod-dir@<:@=DIR@:>@],
-                 [install modules to DIR; if used without arguments, install them to the varnish module directory]),
+AC_ARG_VAR([VMODDIR],  [vmod installation directory])
+AC_ARG_WITH([vmoddir],
+  AC_HELP_STRING([--with-vmoddir=DIR],
+                 [install modules to DIR]),
   [case "$withval" in
-   yes)
-       VMODDIR=`pkg-config --variable=vmoddir varnishapi`
-       if test -z "$VMODDIR"; then
-		AC_MSG_FAILURE([cannot determine vmod installation directory])
-       fi;;
-   /*) VMODDIR=$withval;;
-   *)  AC_MSG_ERROR([argument to --with-vmod-dir must be absolute pathname])
-   esac])
+   /*)   VMODDIR=$withval;;
+   no)   unset VMODDIR;;
+   *)    AC_MSG_ERROR([argument to --with-vmoddir must be absolute pathname])
+   esac],[VMODDIR=`pkg-config --variable=vmoddir varnishapi`
+   if test -z "$VMODDIR"; then
+	AC_MSG_FAILURE([cannot determine vmod installation directory])
+   fi])
+
 
 if test -z "$VMODDIR"; then
        VMODDIR='$(libdir)/varnish/mods'

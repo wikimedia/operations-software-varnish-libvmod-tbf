@@ -17,6 +17,8 @@ ACLOCAL_AMFLAGS = -I m4
 
 SUBDIRS = src tests
 
+AM_DISTCHECK_CONFIGURE_FLAGS=--without-vmoddir
+
 EXTRA_DIST=git2chg.awk
 
 .PHONY: ChangeLog
