@@ -1,0 +1,94 @@
+Vmod-tbf README
+Copyright (C) 2013 Sergey Poznyakoff
+See the end of file for copying conditions.
+
+* Introduction
+
+This file contains brief information about configuring, testing
+and using vmod-tbf. It is *not* intended as a replacement
+for the documentation, and is provided as a brief reference only.
+For accessing complete vmod-tbf documentation, see the section
+'Documentation' below.
+
+* Overview
+
+This module implements token bucket filtering for Varnish Cache.
+Token bucket filtering (TBF) allows for controlling the rate of
+data traffic.  The following example illustrates the use of
+this module in VCL script:
+
+    import tbf;
+    
+    sub vcl_recv {
+        if (!tbf.check(client.ip, "10 req/1s")) {
+            error 429 "Request rate exceeded."
+	}
+    }
+
+This will keep the incoming HTTP traffic at the rate of 10 requests
+per second.
+
+Additionally, this module provides several auxiliary functions for
+checking load average of the machine, getting system time, formatting
+UNIX timestamps in human-readable form, etc.
+
+* Installation
+
+In order to compile the package you need to have Varnish source tree
+configured and compiled, and the Berkeley DB library.  The minimum
+prerequisites are Varnish 3.0.1 and BDB 4.2.
+
+Supposing that the varnish source tree is available under
+/usr/src/varnish-3.0.1, run:
+
+  ./configure --with-varnish-source=/usr/src/varnish-3.0.1
+
+The `--with-varnish-source' option is mandatory: it tells configure
+where Varnish sources reside.
+
+Once configured, do
+  
+  make
+
+This will build the module.  After this step you can optionally run
+'make test' to test the package.
+
+Finally, run the following command as root:
+  
+  make install
+
+* Documentation
+
+The manual page vmod-tbf(3) will be available after successful install.
+To read it without actually installing the module, run
+`man src/vmod-tbf.3'.
+
+An online copy of the documentation is available from
+http://www.gnu.org.ua/software/vmod-tbf.
+
+* Bug reporting
+
+Send bug reports and suggestions to <gray@gnu.org>
+
+
+* Copyright information:
+
+Copyright (C) 2013 Sergey Poznyakoff
+
+   Permission is granted to anyone to make or distribute verbatim copies
+   of this document as received, in any medium, provided that the
+   copyright notice and this permission notice are preserved,
+   thus giving the recipient permission to redistribute in turn.
+
+   Permission is granted to distribute modified versions
+   of this document, or of portions of it,
+   under the above conditions, provided also that they
+   carry prominent notices stating who last changed them.
+
+
+Local Variables:
+mode: outline
+paragraph-separate: "[ 	]*$"
+version-control: never
+End:
+  

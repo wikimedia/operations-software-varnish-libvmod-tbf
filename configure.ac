@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
 AC_PREREQ(2.69)
-AC_INIT([vmod-tbf], 0.99.91, [gray@gnu.org])
+AC_INIT([vmod-tbf], 1.0, [gray@gnu.org])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR(src/vmod_tbf.vcc)
@@ -23,7 +23,7 @@ AM_CONFIG_HEADER(config.h)
 AC_CANONICAL_SYSTEM
 AC_LANG(C)
 
-AM_INIT_AUTOMAKE([gnu tar-ustar])
+AM_INIT_AUTOMAKE([1.14 gnu tar-ustar])
 
 AC_GNU_SOURCE
 AC_PROG_CC
@@ -114,7 +114,6 @@ AC_CHECK_LIB(db, db_create,
      [],
      [AC_MSG_ERROR([header file db.h is not the same version as libdb])])])
 
-dnl FIXME:	tests/Makefile
 AC_CONFIG_FILES([
 	Makefile
 	src/Makefile
