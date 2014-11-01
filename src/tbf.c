@@ -14,17 +14,12 @@
    You should have received a copy of the GNU General Public License
    along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
 */
-#include <config.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdbool.h>
+#include "tbf.h"
 #include <syslog.h>
 #include <inttypes.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <db.h>
-#include "vrt.h"
-#include "vcc_if.h"
-#include "bin/varnishd/cache.h"
 
 static int debug_level;
 
@@ -351,7 +346,7 @@ tbf_init(struct vmod_priv *priv, const struct VCL_conf *vclconf)
 }
 
 void
-vmod_open(struct sess *sp, const char *dir, const char *params)
+vmod_open(MOD_CTX ctx, const char *dir, const char *params)
 {
 	if (db) {
 		syslog(LOG_DAEMON|LOG_ERR, "tbf.open called twice");
@@ -362,7 +357,7 @@ vmod_open(struct sess *sp, const char *dir, const char *params)
 }
 
 void
-vmod_close(struct sess *sp)
+vmod_close(MOD_CTX ctx)
 {
 	pthread_mutex_lock(&mutex);
 	if (db) {
@@ -377,7 +372,7 @@ vmod_close(struct sess *sp)
 }
 
 void
-vmod_sync(struct sess *sp)
+vmod_sync(MOD_CTX ctx)
 {
 	if (db) {
 		debug(1, ("synchronizing database"));
@@ -410,7 +405,7 @@ struct tbf_bucket {
 };
 
 int
-tbf_proc(struct sess *sp, DB *db, const char *key, int cost,
+tbf_proc(MOD_CTX ctx, DB *db, const char *key, int cost,
 	 unsigned long interval, int burst_size)
 {
 	DBT keydat, content;
@@ -499,8 +494,9 @@ tbf_proc(struct sess *sp, DB *db, const char *key, int cost,
 	return res;
 }
 
-unsigned
-vmod_rate(struct sess *sp, const char *key, int cost, double t, int burst_size)
+VCL_BOOL
+vmod_rate(MOD_CTX ctx, VCL_STRING key, VCL_INT cost, VCL_REAL t,
+	  VCL_INT burst_size)
 {
 	unsigned long interval = t * USEC_PER_SEC;
 	int rc;
@@ -527,7 +523,7 @@ vmod_rate(struct sess *sp, const char *key, int cost, double t, int burst_size)
 		kp = keylock_find_safe(key);
 		debug(2, ("found key %s, ref %u", key, kp->refcnt));
 		AZ(pthread_mutex_lock(&kp->mutex));
-		rc = tbf_proc(sp, db, key, cost, interval, burst_size);
+		rc = tbf_proc(ctx, db, key, cost, interval, burst_size);
 		if (--kp->refcnt == 0)
 			keylock_remove_safe(kp);
 		AZ(pthread_mutex_unlock(&kp->mutex));
@@ -539,8 +535,8 @@ vmod_rate(struct sess *sp, const char *key, int cost, double t, int burst_size)
 
 #define ISWS(c) ((c)==' '||(c)=='\t')
 
-unsigned
-vmod_check(struct sess *sp, const char *key, const char *spec)
+VCL_BOOL
+vmod_check(MOD_CTX ctx, VCL_STRING key, VCL_STRING spec)
 {
 	double t, v, n;
 	char *p;
@@ -601,5 +597,5 @@ vmod_check(struct sess *sp, const char *key, const char *spec)
 		syslog(LOG_DAEMON|LOG_WARNING, "garbage after rate spec: %s",
 		       spec);
 
-	return vmod_rate(sp, key, 1, n/v, v/n+1);
+	return vmod_rate(ctx, key, 1, n/v, v/n+1);
 }

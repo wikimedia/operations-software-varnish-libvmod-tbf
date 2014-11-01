@@ -1,5 +1,5 @@
 /* This file is part of vmod-tbf
-   Copyright (C) 2013 Sergey Poznyakoff
+   Copyright (C) 2013-2014 Sergey Poznyakoff
   
    Vmod-tbf is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,18 +14,25 @@
    You should have received a copy of the GNU General Public License
    along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
 */
-#include "tbf.h"
-#include <errno.h>
-#include <time.h>
-
-VCL_VOID
-vmod_sleep(MOD_CTX ctx, VCL_REAL t)
-{
-	struct timespec ts, ret;
-
-	ts.tv_sec = t;
-	ts.tv_nsec = (t - ts.tv_sec) * 1e9;
-
-	while (nanosleep(&ts, &ret) && errno == EINTR)
-		ts = ret;
-}
+#include <config.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include <syslog.h>
+#include "vrt.h"
+#include "vcc_if.h"
+#include "pthread.h"
+#if VARNISHVERSION == 3
+# include "bin/varnishd/cache.h"
+# define VCL_VOID void
+# define VCL_INT int
+# define VCL_REAL double
+# define VCL_BOOL unsigned
+# define VCL_STRING const char *
+# define MOD_CTX struct sess *
+# define WSPTR(s) ((s)->wrk->ws)
+#else
+# include "bin/varnishd/cache/cache.h"
+# define MOD_CTX const struct vrt_ctx *
+# define WSPTR(s) ((s)->ws)
+#endif

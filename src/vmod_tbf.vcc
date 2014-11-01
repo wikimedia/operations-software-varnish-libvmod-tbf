@@ -1,11 +1,36 @@
-Module tbf
-Init tbf_init
-Function VOID open(STRING, STRING)
-Function VOID close()
-Function VOID sync()
-Function BOOL rate(STRING, INT, DURATION, INT)
-Function BOOL check(STRING, STRING)
-Function REAL getla(INT)
-Function INT systime()
-Function STRING strftime(STRING, INT)
-Function VOID sleep(DURATION)
+# This file is part of vmod-tbf
+# Copyright (C) 2013 Sergey Poznyakoff
+#
+# Vmod-tbf is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3, or (at your option)
+# any later version.
+#
+# Vmod-tbf is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
+
+$Module tbf 3 Token Bucket Filtering for Varnish
+
+COLOPHON
+========
+This document provides a short description of the **vmod-tbf** module.
+For a detailed documentation, please see vmod-tbf(3) manual page.
+
+DESCRIPTION
+===========
+
+$Init tbf_init
+$Function VOID open(STRING, STRING)
+$Function VOID close()
+$Function VOID sync()
+$Function BOOL rate(STRING, INT, DURATION, INT)
+$Function BOOL check(STRING, STRING)
+$Function REAL getla(INT)
+$Function INT systime()
+$Function STRING strftime(STRING, INT)
+$Function VOID sleep(DURATION)

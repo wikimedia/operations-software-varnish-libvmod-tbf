@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
 AC_PREREQ(2.69)
-AC_INIT([vmod-tbf], 1.0, [gray@gnu.org])
+AC_INIT([vmod-tbf], 1.0.90, [gray@gnu.org])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR(src/vmod_tbf.vcc)
@@ -67,9 +67,17 @@ case "$VARNISHSRC" in
 esac
 
 VARNISHSRC=`cd $VARNISHSRC && pwd`
+VARNISHVERSION=
 AC_CHECK_FILE([$VARNISHSRC/include/varnishapi.h],
-  [],
-  [AC_MSG_FAILURE(["$VARNISHSRC" is not a Varnish source directory])])
+  [VARNISHVERSION=3],
+  [AC_CHECK_FILE([$VARNISHSRC/include/vapi/vsm.h],
+     [VARNISHVERSION=4],
+     [AC_MSG_FAILURE(["$VARNISHSRC" is not a Varnish source directory])]) ])
+AC_SUBST([VARNISHVERSION],$VARNISHVERSION)
+
+AC_DEFINE_UNQUOTED([VARNISHVERSION],$VARNISHVERSION,[Varnish major version number])
+AM_CONDITIONAL([VARNISH3],[test $VARNISHVERSION -eq 3])
+AM_CONDITIONAL([VARNISH4],[test $VARNISHVERSION -eq 4])
 
 # Check that varnishtest is built in the varnish source directory
 AC_CHECK_FILE([$VARNISHSRC/bin/varnishtest/varnishtest],

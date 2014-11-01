@@ -14,10 +14,12 @@ varnish v1 -vcl+backend {
 		tbf.close();
 	}
 	sub vcl_recv {
-		if (!tbf.check("url:"+req.url, "4 req/s")) {
-			error 420 "Overlimit";
+		if (!tbf.rate("url:"+req.url, 1, 20 s, 5)) {
+#VARNISH3#		error 420 "Overlimit";
+#VARNISH4#		return (synth(420, "Overlimit"));
 		}
-		return (lookup);
+#VARNISH3#	return (lookup);
+#VARNISH4#	return (hash);
 	}
 } -start
 

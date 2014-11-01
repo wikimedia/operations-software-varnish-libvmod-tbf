@@ -16,6 +16,7 @@
 
 AM_CPPFLAGS=\
  -I$(VARNISHSRC)/include\
+ -I$(VARNISHSRC)/bin/varnishd\
  -I$(VARNISHSRC)\
  -DLOCALSTATEDIR=\"$(localstatedir)\"
 
@@ -28,19 +29,37 @@ libvmod_tbf_la_LDFLAGS=-module -export-dynamic -avoid-version
 libvmod_tbf_la_LIBADD=
 
 libvmod_tbf_la_SOURCES = \
+	tbf.c\
+        tbf.h\
         getla.c\
         sleep.c\
-        time.c\
-	tbf.c\
+        time.c
+nodist_libvmod_tbf_la_SOURCES = \
 	vcc_if.c vcc_if.h
 
-BUILT_SOURCES = vcc_if.c vcc_if.h
+tbf.lo: vcc_if.h
 
-vcc_if.c vcc_if.h: $(VARNISHSRC)/lib/libvmod_std/vmod.py $(top_srcdir)/src/vmod_tbf.vcc
-	@PYTHON@ $(VARNISHSRC)/lib/libvmod_std/vmod.py $(top_srcdir)/src/vmod_tbf.vcc
+CLEANFILES = vcc_if.c vcc_if.h *.rst
+
+if VARNISH4
+  vmodtool = $(VARNISHSRC)/lib/libvcc/vmodtool.py
+  vmodtoolargs = --strict
+  vccfile = $(top_srcdir)/src/vmod_tbf.vcc
+else
+  vmodtool = $(VARNISHSRC)/lib/libvmod_std/vmod.py
+  vmodtoolargs =
+  vccfile = vmod_tbf.vcc3
+
+vmod_tbf.vcc3: $(top_srcdir)/src/vmod_tbf.vcc
+  CLEANFILES += vmod_tbf.vcc3
+endif
+
+.vcc.vcc3:
+	sed -n '/^\$$/{s///;s/\(Module  *[^ ][^ ]*\).*/\1/;p}' $< > $@
+vcc_if.c vcc_if.h: $(vmodtool) $(vccfile)
+	@PYTHON@ $(vmodtool) $(vmodtoolargs) $(vccfile)
 
 EXTRA_DIST = \
 	vmod_tbf.vcc
 
-CLEANFILES = $(builddir)/vcc_if.c $(builddir)/vcc_if.h
 

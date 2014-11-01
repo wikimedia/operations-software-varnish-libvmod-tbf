@@ -15,15 +15,10 @@
    along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
 */
 #define _BSD_SOURCE
-#include <config.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <syslog.h>
+#include "tbf.h"
 #if defined(HAVE_SYSINFO) && defined(HAVE_SYS_SYSINFO_H)
 # include <sys/sysinfo.h>
 #endif
-#include "vrt.h"
-#include "vcc_if.h"
 
 static double
 sys_getla(int what)
@@ -50,8 +45,8 @@ sys_getla(int what)
 #endif	
 }
 
-double
-vmod_getla(struct sess *sp, int what)
+VCL_REAL
+vmod_getla(MOD_CTX ctx, VCL_INT what)
 {
 	switch (what) {
 	case 1:
