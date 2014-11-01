@@ -122,6 +122,15 @@ AC_CHECK_LIB(db, db_create,
      [],
      [AC_MSG_ERROR([header file db.h is not the same version as libdb])])])
 
+AC_CONFIG_COMMANDS([status],[
+delim="-------------------------------------------------------------------"
+echo ""
+echo $delim
+echo "Building for Varnish version $VARNISHVERSION"
+echo $delim
+],
+[VARNISHVERSION=$VARNISHVERSION])
+
 AC_CONFIG_FILES([
 	Makefile
 	src/Makefile
