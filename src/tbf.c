@@ -15,10 +15,6 @@
    along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
 */
 #include "tbf.h"
-#include <syslog.h>
-#include <inttypes.h>
-#include <sys/stat.h>
-#include <sys/time.h>
 #include <db.h>
 
 static int debug_level;

@@ -19,6 +19,9 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <syslog.h>
+#include <inttypes.h>
+#include <sys/stat.h>
+#include <sys/time.h>
 #include "vrt.h"
 #include "vcc_if.h"
 #include "pthread.h"
