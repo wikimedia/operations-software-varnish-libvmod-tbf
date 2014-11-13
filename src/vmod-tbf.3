@@ -13,7 +13,7 @@
 .\"
 .\" You should have received a copy of the GNU General Public License
 .\" along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
-.TH VMOD-TBF 1 "November 1, 2014" "VMOD-TBF" "User Reference"
+.TH VMOD-TBF 1 "November 13, 2014" "VMOD-TBF" "User Reference"
 .SH NAME
 vmod-tbf \- token bucket filtering for Varnish
 .SH SYNOPSIS
@@ -78,7 +78,7 @@ The function returns \fBTRUE\fR if the data are accepted and
 .EX
 sub vcl_recv {
     if (!tbf.rate("ip:" + client.ip, 1, 0.1s, 20)) {
-        error 429 "Request rate exceeded."
+        error(429, "Request rate exceeded");
     }
 }
 .EE 
@@ -86,6 +86,15 @@ sub vcl_recv {
 This example will keep the incoming requests at the rate of 10 requests
 per second, allowing for bursts of up to 20 requests after each 2
 second (or longer) period of inactivity.
+.PP
+For VCL 4.0, replace
+.EX
+        error(429, "Request rate exceeded");
+.EE
+with
+.EX
+        return(synth(429, "Request rate exceeded"));
+.EE
 .PP
 The \fBtbf.check\fR function provides a higher-level interface.  Its
 first argument identifies the bucket.  The \fIrate\fR argument is a
@@ -104,7 +113,7 @@ ten and a half requests per second:
 .EX
 sub vcl_recv {
     if (!tbf.check(client.ip, "10.5 req/1s")) {
-        error 429 "Request rate exceeded."
+        error(429, "Request rate exceeded");
     }
 }
 .EE
