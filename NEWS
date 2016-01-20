@@ -1,8 +1,13 @@
-vmod-tbf -- history of user-visible changes. 2014-11-13
+vmod-tbf -- history of user-visible changes. 2016-01-20
 Copyright (C) 2013-2014 Sergey Poznyakoff
 See the end of file for copying conditions.
 
 Please send vmod-tbf bug reports to <gray@gnu.org>
+
+
+Version 2.1, (git)
+
+Support for Varnishapi 4.1
 
 
 Version 2.0, 2014-11-13

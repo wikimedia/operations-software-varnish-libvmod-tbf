@@ -24,7 +24,7 @@ For a detailed documentation, please see vmod-tbf(3) manual page.
 DESCRIPTION
 ===========
 
-$Init tbf_init
+$Event tbf_event
 $Function VOID open(STRING, STRING)
 $Function VOID close()
 $Function VOID sync()

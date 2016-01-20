@@ -22,7 +22,9 @@
 #include <inttypes.h>
 #include <sys/stat.h>
 #include <sys/time.h>
-#include "vrt.h"
+#include <errno.h>
+#include <vcl.h>
+#include <vrt.h>
 #include "vcc_if.h"
 #include "pthread.h"
 

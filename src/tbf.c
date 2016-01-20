@@ -335,10 +335,13 @@ tbf_open_safe(const char *params)
 }
 
 int
-tbf_init(struct vmod_priv *priv, const struct VCL_conf *vclconf)
+tbf_event(VRT_CTX, struct vmod_priv *priv, enum vcl_event_e e)
 {
-	VTAILQ_INIT(&keylock_head);
-	VTAILQ_INIT(&keylock_avail);
+	if (e == VCL_EVENT_LOAD) {
+		VTAILQ_INIT(&keylock_head);
+		VTAILQ_INIT(&keylock_avail);
+	}
+	return 0;
 }
 
 void

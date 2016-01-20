@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
 AC_PREREQ(2.69)
-AC_INIT([vmod-tbf], 2.0, [gray@gnu.org])
+AC_INIT([vmod-tbf], 2.0.90, [gray@gnu.org])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR(src/vmod_tbf.vcc)
