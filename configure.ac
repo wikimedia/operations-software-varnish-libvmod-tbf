@@ -1,5 +1,5 @@
 # This file is part of vmod-tbf -*- autoconf -*-
-# Copyright (C) 2013-2014 Sergey Poznyakoff
+# Copyright (C) 2013-2016 Sergey Poznyakoff
 #
 # Vmod-tbf is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -67,17 +67,37 @@ case "$VARNISHSRC" in
 esac
 
 VARNISHSRC=`cd $VARNISHSRC && pwd`
-VARNISHVERSION=
-AC_CHECK_FILE([$VARNISHSRC/include/varnishapi.h],
-  [VARNISHVERSION=3],
-  [AC_CHECK_FILE([$VARNISHSRC/include/vapi/vsm.h],
-     [VARNISHVERSION=4],
-     [AC_MSG_FAILURE(["$VARNISHSRC" is not a Varnish source directory])]) ])
-AC_SUBST([VARNISHVERSION],$VARNISHVERSION)
 
-AC_DEFINE_UNQUOTED([VARNISHVERSION],$VARNISHVERSION,[Varnish major version number])
-AM_CONDITIONAL([VARNISH3],[test $VARNISHVERSION -eq 3])
-AM_CONDITIONAL([VARNISH4],[test $VARNISHVERSION -eq 4])
+
+# pkg-config
+PKG_PROG_PKG_CONFIG
+PKG_CHECK_MODULES([libvarnishapi], [varnishapi])
+
+varnishapi_version() {
+    VARNISHAPI_MAJOR=$1
+    VARNISHAPI_MINOR=$2
+    VARNISHAPI_PATCH=$3
+}
+
+v=$($PKG_CONFIG --modversion varnishapi)
+if test -n "$v"; then
+    save_IFS=$IFS
+    IFS='.'
+    varnishapi_version $v
+    IFS=$save_IFS
+else
+    AC_MSG_ERROR([unknown varnishapi version])
+fi
+
+if test $VARNISHAPI_MAJOR -ne 4; then
+    AC_MSG_ERROR([unsupported varnishapi version])
+fi
+
+case $VARNISHAPI_MINOR in
+0)  AC_MSG_ERROR([unsupported varnishapi version]);;
+1)  ;;
+*)  AC_MSG_WARN([varnishapi minor version probably unsupported])
+esac
 
 # Check that varnishtest is built in the varnish source directory
 AC_CHECK_FILE([$VARNISHSRC/bin/varnishtest/varnishtest],
@@ -94,7 +114,7 @@ AC_ARG_WITH([vmoddir],
    /*)   VMODDIR=$withval;;
    no)   unset VMODDIR;;
    *)    AC_MSG_ERROR([argument to --with-vmoddir must be absolute pathname])
-   esac],[VMODDIR=`pkg-config --variable=vmoddir varnishapi`
+   esac],[VMODDIR=$($PKG_CONFIG --variable=vmoddir varnishapi)
    if test -z "$VMODDIR"; then
 	AC_MSG_FAILURE([cannot determine vmod installation directory])
    fi])
@@ -126,10 +146,12 @@ AC_CONFIG_COMMANDS([status],[
 delim="-------------------------------------------------------------------"
 echo ""
 echo $delim
-echo "Building for Varnish version $VARNISHVERSION"
+echo "Building for Varnish version $VARNISHAPI_MAJOR.$VARNISHAPI_MINOR"
 echo $delim
 ],
-[VARNISHVERSION=$VARNISHVERSION])
+[VARNISHAPI_MAJOR=$VARNISHAPI_MAJOR
+VARNISHAPI_MINOR=$VARNISHAPI_MINOR
+])
 
 AC_CONFIG_FILES([
 	Makefile

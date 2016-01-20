@@ -41,21 +41,10 @@ tbf.lo: vcc_if.h
 
 CLEANFILES = vcc_if.c vcc_if.h *.rst
 
-if VARNISH4
-  vmodtool = $(VARNISHSRC)/lib/libvcc/vmodtool.py
-  vmodtoolargs = --strict
-  vccfile = $(top_srcdir)/src/vmod_tbf.vcc
-else
-  vmodtool = $(VARNISHSRC)/lib/libvmod_std/vmod.py
-  vmodtoolargs =
-  vccfile = vmod_tbf.vcc3
+vmodtool = $(VARNISHSRC)/lib/libvcc/vmodtool.py
+vmodtoolargs = --strict
+vccfile = $(top_srcdir)/src/vmod_tbf.vcc
 
-vmod_tbf.vcc3: $(top_srcdir)/src/vmod_tbf.vcc
-  CLEANFILES += vmod_tbf.vcc3
-endif
-
-.vcc.vcc3:
-	sed -n '/^\$$/{s///;s/\(Module  *[^ ][^ ]*\).*/\1/;p}' $< > $@
 vcc_if.c vcc_if.h: $(vmodtool) $(vccfile)
 	@PYTHON@ $(vmodtool) $(vmodtoolargs) $(vccfile)
 

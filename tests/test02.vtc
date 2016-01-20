@@ -1,5 +1,5 @@
 # This file is part of vmod-tbf
-# Copyright (C) 2013-2014 Sergey Poznyakoff
+# Copyright (C) 2013-2016 Sergey Poznyakoff
 #
 # Vmod-tbf is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -31,11 +31,9 @@ varnish v1 -vcl+backend {
 	}
 	sub vcl_recv {
 		if (!tbf.check("url:"+req.url, "4 req/s")) {
-#VARNISH3#		error 420 "Overlimit";
-#VARNISH4#		return (synth(420, "Overlimit"));
+             		return (synth(420, "Overlimit"));
 		}
-#VARNISH3#	return (lookup);
-#VARNISH4#	return (hash);
+            	return (hash);
 	}
 } -start
 

@@ -14,29 +14,14 @@
 # You should have received a copy of the GNU General Public License
 # along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
 
-VMOD_VTC = \
- test01.vtc\
- test03.vtc\
- time00.vtc
-
-VMOD_VTI = \
- test00.vti\
- test02.vti
-
-BUILT_TESTS = $(VMOD_VTI:.vti=.vtc)
-
 VMOD_TESTS = \
- test00.vti\
+ test00.vtc\
  test01.vtc\
- test02.vti\
+ test02.vtc\
  test03.vtc\
  time00.vtc
 
-.vti.vtc:
-	sed 's/^#VARNISH$(VARNISHVERSION)#//' $< > $@
-
-EXTRA_DIST=$(VMOD_VTC) $(VMOD_VTI)
-CLEANFILES=$(BUILT_TESTS)
+EXTRA_DIST=$(VMOD_TESTS)
 
 distclean-local:
 	rm -fr tbf
