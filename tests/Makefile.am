@@ -1,5 +1,5 @@
 # This file is part of vmod-tbf
-# Copyright (C) 2013-2014 Sergey Poznyakoff
+# Copyright (C) 2013-2016 Sergey Poznyakoff
 #
 # Vmod-tbf is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -24,10 +24,10 @@ VMOD_TESTS = \
 EXTRA_DIST=$(VMOD_TESTS)
 
 distclean-local:
-	rm -fr tbf
+	$(AM_V_at)rm -fr tbf
 
 check: $(BUILT_TESTS)
-	for t in $(VMOD_TESTS); do \
+	$(AM_V_at)for t in $(VMOD_TESTS); do \
 	    n=$${t%%.vti}; \
 	    if [ $$n != $$t ]; then \
 		t=$(abs_builddir)/$${n}.vtc;\

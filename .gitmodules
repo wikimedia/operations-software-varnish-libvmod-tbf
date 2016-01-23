@@ -1,0 +1,3 @@
+[submodule "acvmod"]
+	path = acvmod
+	url = git://git.gnu.org.ua/acvmod.git

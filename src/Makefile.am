@@ -1,5 +1,5 @@
 # This file is part of vmod-tbf
-# Copyright (C) 2013-2014 Sergey Poznyakoff
+# Copyright (C) 2013-2016 Sergey Poznyakoff
 #
 # Vmod-tbf is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -46,7 +46,7 @@ vmodtoolargs = --strict
 vccfile = $(top_srcdir)/src/vmod_tbf.vcc
 
 vcc_if.c vcc_if.h: $(vmodtool) $(vccfile)
-	@PYTHON@ $(vmodtool) $(vmodtoolargs) $(vccfile)
+	$(AM_V_GEN)$(PYTHON) $(vmodtool) $(vmodtoolargs) $(vccfile)
 
 EXTRA_DIST = \
 	vmod_tbf.vcc

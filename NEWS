@@ -1,13 +1,18 @@
-vmod-tbf -- history of user-visible changes. 2016-01-20
-Copyright (C) 2013-2014 Sergey Poznyakoff
+vmod-tbf -- history of user-visible changes. 2016-01-23
+Copyright (C) 2013-2016 Sergey Poznyakoff
 See the end of file for copying conditions.
 
 Please send vmod-tbf bug reports to <gray@gnu.org>
 
 
-Version 2.1, (git)
+Version 2.0.90-4.1.9, (git)
 
-Support for Varnishapi 4.1
+* Versioning changes
+
+Starting with this release, the version number includes version
+of Varnish API the release was designed for.
+
+* Support for Varnish 4,1
 
 
 Version 2.0, 2014-11-13
@@ -22,7 +27,7 @@ Initial release
 =========================================================================
 Copyright information:
 
-Copyright (C) 2013-2014 Sergey Poznyakoff
+Copyright (C) 2013-2016 Sergey Poznyakoff
 
    Permission is granted to anyone to make or distribute verbatim copies
    of this document as received, in any medium, provided that the

@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
 AC_PREREQ(2.69)
-AC_INIT([vmod-tbf], 2.0.90, [gray@gnu.org])
+AC_INIT([vmod-tbf], 2.0.90-4.1.0, [gray@gnu.org])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR(src/vmod_tbf.vcc)
@@ -23,7 +23,8 @@ AM_CONFIG_HEADER(config.h)
 AC_CANONICAL_SYSTEM
 AC_LANG(C)
 
-AM_INIT_AUTOMAKE([1.14 gnu tar-ustar])
+AM_INIT_AUTOMAKE([1.14 gnu tar-ustar silent-rules])
+AM_SILENT_RULES([yes])
 
 AC_GNU_SOURCE
 AC_PROG_CC
@@ -37,9 +38,6 @@ AC_PROG_INSTALL
 AC_PROG_LIBTOOL
 AC_PROG_MAKE_SET
 
-# Check for pkg-config
-PKG_PROG_PKG_CONFIG
-
 # Checks for header files.
 AC_HEADER_STDC
 AC_CHECK_HEADERS(sys/sysinfo.h)
@@ -47,82 +45,7 @@ AC_CHECK_HEADERS(sys/sysinfo.h)
 # Check for functions
 AC_CHECK_FUNCS(sysinfo getloadavg)
 
-# Check for python
-AC_CHECK_PROGS(PYTHON, [python], [
-	AC_MSG_ERROR([python is not found.])])
-
-# Varnish source tree
-AC_ARG_VAR([VARNISHSRC], [path to Varnish source tree])
-AC_ARG_WITH([varnish-source],
-            AC_HELP_STRING([--with-varnish-source=DIR],
-	                   [Varnish sources are located in DIR]),
-	    [VARNISHSRC=$withval])
-
-if test -z "$VARNISHSRC"; then
-	AC_MSG_ERROR([no Varnish source tree specified])
-fi
-case "$VARNISHSRC" in
-/*) ;;
-*)  AC_MSG_ERROR([varnish source path must be absolute pathname])
-esac
-
-VARNISHSRC=`cd $VARNISHSRC && pwd`
-
-
-# pkg-config
-PKG_PROG_PKG_CONFIG
-PKG_CHECK_MODULES([libvarnishapi], [varnishapi])
-
-varnishapi_version() {
-    VARNISHAPI_MAJOR=$1
-    VARNISHAPI_MINOR=$2
-    VARNISHAPI_PATCH=$3
-}
-
-v=$($PKG_CONFIG --modversion varnishapi)
-if test -n "$v"; then
-    save_IFS=$IFS
-    IFS='.'
-    varnishapi_version $v
-    IFS=$save_IFS
-else
-    AC_MSG_ERROR([unknown varnishapi version])
-fi
-
-if test $VARNISHAPI_MAJOR -ne 4; then
-    AC_MSG_ERROR([unsupported varnishapi version])
-fi
-
-case $VARNISHAPI_MINOR in
-0)  AC_MSG_ERROR([unsupported varnishapi version]);;
-1)  ;;
-*)  AC_MSG_WARN([varnishapi minor version probably unsupported])
-esac
-
-# Check that varnishtest is built in the varnish source directory
-AC_CHECK_FILE([$VARNISHSRC/bin/varnishtest/varnishtest],
-  [],
-  [AC_MSG_FAILURE([cannot find "$VARNISHSRC/bin/varnishtest/varnishtest". Please build your varnish source directory])]
-)
-
-# vmod installation dir
-AC_ARG_VAR([VMODDIR],  [vmod installation directory])
-AC_ARG_WITH([vmoddir],
-  AC_HELP_STRING([--with-vmoddir=DIR],
-                 [install modules to DIR]),
-  [case "$withval" in
-   /*)   VMODDIR=$withval;;
-   no)   unset VMODDIR;;
-   *)    AC_MSG_ERROR([argument to --with-vmoddir must be absolute pathname])
-   esac],[VMODDIR=$($PKG_CONFIG --variable=vmoddir varnishapi)
-   if test -z "$VMODDIR"; then
-	AC_MSG_FAILURE([cannot determine vmod installation directory])
-   fi])
-
-
-if test -z "$VMODDIR"; then
-       VMODDIR='$(libdir)/varnish/mods'
-fi
+AM_VARNISHAPI
 
 ###########
 # Check for db.h and libdb
@@ -141,17 +64,6 @@ AC_CHECK_LIB(db, db_create,
         ])],
      [],
      [AC_MSG_ERROR([header file db.h is not the same version as libdb])])])
-
-AC_CONFIG_COMMANDS([status],[
-delim="-------------------------------------------------------------------"
-echo ""
-echo $delim
-echo "Building for Varnish version $VARNISHAPI_MAJOR.$VARNISHAPI_MINOR"
-echo $delim
-],
-[VARNISHAPI_MAJOR=$VARNISHAPI_MAJOR
-VARNISHAPI_MINOR=$VARNISHAPI_MINOR
-])
 
 AC_CONFIG_FILES([
 	Makefile

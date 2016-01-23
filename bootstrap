@@ -3,5 +3,7 @@ for dir in m4 build-aux
 do
 	test -d $dir || mkdir $dir
 done
+git submodule init
+git submodule update
 test -f ChangeLog || touch ChangeLog
 autoreconf -f -i -s

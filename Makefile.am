@@ -1,5 +1,5 @@
 # This file is part of vmod-tbf
-# Copyright (C) 2013-2014 Sergey Poznyakoff
+# Copyright (C) 2013-2016 Sergey Poznyakoff
 #
 # Vmod-tbf is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
-ACLOCAL_AMFLAGS = -I m4
+ACLOCAL_AMFLAGS = -I m4 -I acvmod
 
 SUBDIRS = src tests
 
