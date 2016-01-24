@@ -7,13 +7,11 @@ Please send vmod-tbf bug reports to <gray@gnu.org>
 
 Version 2.0.90-4.1.9, (git)
 
+* Support for Varnish 4.1
+
 * Versioning changes
 
 Starting with this release, the version number includes version
-of Varnish API the release was designed for.
-
-* Support for Varnish 4,1
-
 
 Version 2.0, 2014-11-13
 
