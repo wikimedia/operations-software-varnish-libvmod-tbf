@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
 AC_PREREQ(2.69)
-AC_INIT([vmod-tbf], 2.0.90-4.1.0, [gray@gnu.org])
+AC_INIT([vmod-tbf], 2.0.91-4.1.0, [gray@gnu.org])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR(src/vmod_tbf.vcc)
@@ -46,24 +46,6 @@ AC_CHECK_HEADERS(sys/sysinfo.h)
 AC_CHECK_FUNCS(sysinfo getloadavg)
 
 AM_VARNISHAPI
-
-###########
-# Check for db.h and libdb
-#
-AC_CHECK_HEADER([db.h],,[AC_MSG_ERROR([Required header file db.h not found])])
-
-AC_CHECK_LIB(db, db_create,
-  [LIBS="$LIBS -ldb"
-   AC_RUN_IFELSE(
-     [AC_LANG_PROGRAM([#include "db.h"],
-        [int v_major, v_minor, v_patch;
-         db_version(&v_major, &v_minor, &v_patch);
-         return !(v_major == DB_VERSION_MAJOR
-                  && v_minor == DB_VERSION_MINOR
-                  && v_patch == DB_VERSION_PATCH);
-        ])],
-     [],
-     [AC_MSG_ERROR([header file db.h is not the same version as libdb])])])
 
 AC_CONFIG_FILES([
 	Makefile

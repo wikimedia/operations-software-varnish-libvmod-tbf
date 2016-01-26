@@ -15,9 +15,15 @@
    along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
 */
 #include "tbf.h"
-#include <db.h>
+#include "vsha256.h"
 
-static int debug_level;
+#ifndef USEC_PER_SEC
+# define USEC_PER_SEC  1000000L
+#endif
+
+#define DEBUG 1
+static unsigned gc_interval = 3600;
+static int debug_level = 0;
 
 static void
 debugprt(const char *fmt, ...)
@@ -28,355 +34,233 @@ debugprt(const char *fmt, ...)
 	va_end(ap);
 }
 #define debug(n,c) do { if (debug_level>=(n)) debugprt c; } while (0)
+
+enum { CHILD_LEFT, CHILD_RIGHT };
 
-#ifndef USEC_PER_SEC
-# define USEC_PER_SEC  1000000L
+struct node {
+	uint8_t key[SHA256_LEN];
+#ifdef DEBUG
+	char *keystr;
 #endif
-
-#define DEFDBNAME "tbf.bdb"
-#define DEFOPENPARAMS "truncate"
-#define DBFILEMODE 0640
-
-static char *dbdir;
-static char *dbname;
-static DB_ENV *dbenv;
-static DB *db;
-static uint64_t autosync_max;
-static uint64_t autosync_count;
-static int tbf_disabled;
-
-static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-
-
-/* The keylock structure serializes accesses to each db record, ensuring
-   that no other thread could modify the data between calls to get and
-   put */
-   
-struct keylock {
-	char *key;                   /* Key string */
-	unsigned refcnt;             /* Reference count */
-	pthread_mutex_t mutex;        
-	VTAILQ_ENTRY(keylock) list;
+	struct node *parent;
+	struct node *child[2];
+	struct node *prev, *next;
+	pthread_cond_t notbusy;
+	int busy;
+	uint64_t timestamp;  /* microseconds since epoch */
+	size_t tokens;       /* tokens available */
 };
 
-/* Keylock_head keeps a list of active (i.e. used by at least one thread)
-   keylocks.  Keylock_avail keeps a list of available threads, to avoid
-   unnecessary memory allocations/frees. */
-static VTAILQ_HEAD(, keylock) keylock_head, keylock_avail;
-
-/* Find and return a keylock corresponding to the given key.  If not found,
-   create it, either by getting an unused entry from keylock_avail or by
-   allocating a new one. */
-static struct keylock *
-keylock_find(const char *key)
+struct tree
 {
-	struct keylock *kp;
-	
-	VTAILQ_FOREACH(kp, &keylock_head, list) {
-		if (strcmp(kp->key, key) == 0) {
-			kp->refcnt++;
-			return kp;
-		}
-	}
+	/* Root node of the tree */
+	struct node *root;
+	/* All nodes are linked in a LRU fashion, head pointing to
+	   the most recently used, and tail to the last recently used
+	   ones. */
+	struct node *head, *tail;	
+	pthread_mutex_t mutex;
+};
+
+/* Linked list management */
 
-	if (VTAILQ_FIRST(&keylock_avail)) {
-		kp = VTAILQ_FIRST(&keylock_avail);
-		VTAILQ_REMOVE(&keylock_avail, kp, list);
+/* Link NODE after REF in TREE.  If REF is NULL, link at head */
+static void
+lru_link_node(struct tree *tree, struct node *node, struct node *ref)
+{
+	if (!ref) {
+		node->prev = NULL;
+		node->next = tree->head;
+		if (tree->head)
+			tree->head->prev = node;
+		else
+			tree->tail = node;
+		tree->head = node;
 	} else {
-		kp = malloc(sizeof(*kp));
-		AN(kp);
-		pthread_mutex_init(&kp->mutex, NULL);
+		struct node *x;
+
+		node->prev = ref;
+		if ((x = ref->next))
+			x->prev = node;
+		else
+			tree->tail = node;
+		ref->next = node;
 	}
-	kp->key = strdup(key);
-	AN(kp->key);
-	kp->refcnt = 1;
-	VTAILQ_INSERT_TAIL(&keylock_head, kp, list);
-	return kp;
 }
 
-/* Thread-safe version of the above. */
-static struct keylock *
-keylock_find_safe(const char *key)
-{
-	struct keylock *kp;
-	pthread_mutex_lock(&mutex);
-	kp = keylock_find(key);
-	pthread_mutex_unlock(&mutex);
-	return kp;
-}
-
-/* Remove keylock from keylock_head and attach it to keylock_avail for
-   eventual future use. */
 static void
-keylock_remove_safe(struct keylock *kp)
+lru_unlink_node(struct tree *tree, struct node *node)
 {
-	pthread_mutex_lock(&mutex);
-	free(kp->key);
-	kp->key = NULL;
-	VTAILQ_REMOVE(&keylock_head, kp, list);
-	VTAILQ_INSERT_TAIL(&keylock_avail, kp, list);
-	pthread_mutex_unlock(&mutex);
+	struct node *x;
+
+	debug(1,("UNLINK %p %p\n", node, node->prev, node->next));
+
+	if ((x = node->prev))
+		x->next = node->next;
+	else
+		tree->head = node->next;
+	if ((x = node->next))
+		x->prev = node->prev;
+	else
+		tree->tail = node->prev;
+	node->prev = node->next = NULL;
 }
 
-static void
-tbf_set_db_dir(const char *dir)
+static int
+keycmp(uint8_t *a, uint8_t *b)
 {
-	if (dbdir)
-		free(dbdir);
-	dbdir = strdup(dir);
-	AN(dbdir);
+	return memcmp(a, b, SHA256_LEN);
 }
-
-struct param_kw {
-	char *pkw_str;
-	int pkw_len;
-	int pkw_tok;
-};
-
-enum {
-	PKW_TRUNCATE,
-	PKW_MODE,
-	PKW_SYNC,
-	PKW_DEBUG,
-	PKW_DBNAME
-};
-
-static struct param_kw param_kw_tab[] = {
-#define S(s) #s, sizeof(#s)-1
-	{ S(truncate), PKW_TRUNCATE },
-	{ S(trunc), PKW_TRUNCATE },
-	{ S(mode=), PKW_MODE },
-	{ S(sync=), PKW_SYNC },
-	{ S(debug=), PKW_DEBUG },
-	{ S(dbname=), PKW_DBNAME },
-	{ NULL }
-#undef S
-};
 
 static void
-tbf_open(const char *params)
+keycpy(uint8_t *a, uint8_t *b)
 {
-	int rc;
-	int filemode = DBFILEMODE;
-	uint64_t n;
-	char *p;
-	struct stat st;
-	int truncate = 0;
-	
-	if (!dbdir) {
-		dbdir = strdup(LOCALSTATEDIR "/vmod-tbf");
-		AN(dbdir);
-	}
-	if (!dbname) {
-		dbname = strdup(DEFDBNAME);
-		AN(dbname);
-	}
-	
-	while (*params) {
-		struct param_kw *pkw;
-		
-		for (pkw = param_kw_tab; pkw->pkw_str; pkw++) {
-			if (strncmp(params, pkw->pkw_str, pkw->pkw_len) == 0)
-				break;
-		}
-
-		if (!pkw->pkw_str) {
-			syslog(LOG_DAEMON|LOG_ERR, "invalid keyword %s", params);
-			break;
-		}
-
-		params += pkw->pkw_len;
-		
-		switch (pkw->pkw_tok) {
-		case PKW_TRUNCATE:
-			truncate = 1;
-			break;
-
-		case PKW_MODE:
-			errno = 0;
-			n = strtoul(params, &p, 8);
-			if (errno || (n & ~0777) || !(*p == 0 || *p == ';')) {
-				syslog(LOG_DAEMON|LOG_ERR,
-				       "invalid file mode near %s", p);
-				params += strlen(params);
-			} else {
-				filemode = n;
-				params = p;
-			}
-			break;
-
-		case PKW_SYNC:
-			errno = 0;
-			n = strtoul(params, &p, 10);
-			if (errno || !(*p == 0 || *p == ';')) {
-				syslog(LOG_DAEMON|LOG_ERR,
-				       "invalid count near %s", p);
-				params += strlen(params);
-			} else {
-				autosync_max = n;
-				autosync_count = 0;
-				params = p;
-			}
-			break;
-
-		case  PKW_DEBUG:
-			errno = 0;
-			n = strtoul(params, &p, 10);
-			if (errno || !(*p == 0 || *p == ';')) {
-				syslog(LOG_DAEMON|LOG_ERR,
-				       "invalid debug level near %s", p);
-				params += strlen(params);
-			} else {
-				debug_level = n;
-				params = p;
-			}
-			break;
-
-		case PKW_DBNAME:
-			if (dbname)
-				free(dbname);
-			n = strcspn(params, ";");
-			dbname = malloc(n + 1);
-			AN(dbname);
-			memcpy(dbname, params, n);
-			dbname[n] = 0;
-			params += n;
-			break;
-		}
-
-		if (*params == 0)
-			break;
-		else if (*params == ';')
-			params++;
-		else {
-			syslog(LOG_DAEMON|LOG_ERR,
-			       "expected ';' near %s", params);
-			break;
-		}
-	}
-	
-	debug(1, ("opening database %s/%s", dbdir, dbname));
-
-	if (rc = db_env_create(&dbenv, 0)) {
-		syslog(LOG_DAEMON|LOG_ERR, "cannot create db environment: %s",
-		       db_strerror(rc));
-		return;
-	}
-
-	if (stat(dbdir, &st)) {
-		if (errno == ENOENT) {
-			if (mkdir(dbdir,
-				  filemode | 0100 |
-				  ((filemode & 0060) ? 0010 : 0) |
-				  ((filemode & 0006) ? 0001 : 0))) {
-				syslog(LOG_DAEMON|LOG_ERR,
-				       "cannot create db environment directory %s: %m",
-				       dbdir);
-			}
-		} else {
-			syslog(LOG_DAEMON|LOG_ERR,
-			       "cannot stat db environment directory %s: %m",
-			       dbdir);
-			return;
-		}
-	} else if (!S_ISDIR(st.st_mode)) {
-		syslog(LOG_DAEMON|LOG_ERR, "%s is not a directory",
-		       dbdir);
-		return;
-	}
-	
-	rc = dbenv->open(dbenv, dbdir,
-			 DB_THREAD | DB_CREATE | DB_INIT_MPOOL | DB_INIT_CDB,
-			 0);
-	if (rc) {
-		syslog(LOG_DAEMON|LOG_ERR, "cannot open db environment %s: %s",
-		       dbdir, db_strerror(rc));
-		tbf_disabled = 1;
-		return;
-	}
-	
-	rc = db_create(&db, dbenv, 0);
-	if (rc) {
-		syslog(LOG_DAEMON|LOG_ERR, "cannot create db struct");
-		return;
-	}
-
-	rc = db->open(db, NULL, dbname, NULL, DB_HASH,
-		      DB_THREAD | DB_CREATE, filemode);
-	if (rc) {
-		syslog(LOG_DAEMON|LOG_ERR, "cannot open database %s: %s",
-		       dbname, db_strerror (rc));
-		db->close(db, 0);
-		db = NULL;
-		dbenv->close(dbenv, 0);
-		dbenv = NULL;
-		tbf_disabled = 1;
-	}
-
-	if (truncate) {
-		rc = db->truncate(db, NULL, NULL, 0);
-		if (rc)
-			syslog(LOG_DAEMON|LOG_WARNING,
-			       "failed to truncate database %s: %s",
-			       dbname, db_strerror(rc));
-	}	
+	memcpy(a, b, SHA256_LEN);
 }
 
-static DB *
-tbf_open_safe(const char *params)
+static void
+key_create(char const *input, uint8_t key[])
 {
-	if (tbf_disabled)
-		return NULL;
-	pthread_mutex_lock(&mutex);
-	if (!db)
-		tbf_open(params ? params : DEFOPENPARAMS);
-	pthread_mutex_unlock(&mutex);
-	return db;
+	struct SHA256Context ctx;
+	SHA256_Init(&ctx);
+	SHA256_Update(&ctx, input, strlen (input));
+	SHA256_Final(key, &ctx);
 }
 
-int
-tbf_event(VRT_CTX, struct vmod_priv *priv, enum vcl_event_e e)
+static void
+node_lock(struct tree *tree, struct node *node)
 {
-	if (e == VCL_EVENT_LOAD) {
-		VTAILQ_INIT(&keylock_head);
-		VTAILQ_INIT(&keylock_avail);
+	if (node->busy) {
+		pthread_cond_wait(&node->notbusy, &tree->mutex);
+		node->busy = 1;
 	}
-	return 0;
 }
 
+static void
+node_unlock(struct node *node)
+{
+	node->busy = 0;
+	pthread_cond_broadcast(&node->notbusy);
+}
+
+enum node_lookup_result {
+	NODE_FOUND,
+	NODE_NEW
+};
+
+static int
+tree_lookup_node(struct tree *tree, uint8_t key[], struct node **ret)
+{
+	int res;
+	struct node *node, *parent = NULL;
+	struct node **nodeptr;
+	
+ 	pthread_mutex_lock(&tree->mutex);
+
+	nodeptr = &tree->root;
+	while ((node = *nodeptr) != NULL) {
+		res = keycmp(key, node->key);
+		if (res == 0)
+			break;
+		parent = node;
+		nodeptr = &node->child[res > 0];
+	}
+
+	if (node) {
+		node_lock(tree, node);
+		lru_unlink_node(tree, node);
+		res = NODE_FOUND;
+	} else {
+		node = calloc(1, sizeof(*node));
+		AN(node);
+		node->parent = parent;
+		keycpy(node->key, key);
+		pthread_cond_init(&node->notbusy, NULL);
+		node->busy = 1;
+		*nodeptr = node;
+		debug(2, ("%x: allocated new node %p", pthread_self(), node));
+		res = NODE_NEW;
+	}
+	lru_link_node(tree, node, NULL);
+	*ret = node;
+ 	pthread_mutex_unlock(&tree->mutex);
+//	debug(0, ("head: %p, root: %p", tree->head, tree->root));
+	return res;
+}
+
+static void
+node_free(struct node *node)
+{
+#ifdef DEBUG
+	free(node->keystr);
+#endif
+	pthread_cond_destroy(&node->notbusy);
+	free(node);
+}
+
+static void
+tree_delete_node_unlocked(struct tree *tree, struct node *node)
+{
+	struct node *parent = node->parent;
+	struct node **slot;
+
+	if (!parent)
+		slot = &tree->root;
+	else if (node == parent->child[CHILD_LEFT])
+		slot = &parent->child[CHILD_LEFT];
+	else
+		slot = &parent->child[CHILD_RIGHT];
+	
+	if (!node->child[CHILD_LEFT]) {
+		/* No left subtree: link the right subtree to the parent slot */
+		*slot = node->child[CHILD_RIGHT];
+		if (node->child[CHILD_RIGHT])
+			node->child[CHILD_RIGHT]->parent = parent;
+	} else if (!node->child[CHILD_RIGHT]) {
+		/* No right subtree: link the left subtree to the parent slot */
+		*slot = node->child[CHILD_LEFT];
+		if (node->child[CHILD_LEFT])
+			node->child[CHILD_LEFT]->parent = parent;
+	} else {
+		/* Node has both subtrees. Find the largest value in the
+		   right subtree */
+		struct node *p;
+		for (p = node->child[CHILD_LEFT]; p->child[CHILD_RIGHT];
+		     p = p->child[CHILD_RIGHT])
+			;
+
+		p->child[CHILD_RIGHT] = node->child[CHILD_RIGHT];
+		p->child[CHILD_RIGHT]->parent = p;
+
+		*slot = node->child[CHILD_LEFT];
+		node->child[CHILD_LEFT]->parent = parent;
+	}
+	lru_unlink_node(tree, node);
+}
+
+/* Dispose of tree nodes that were last accessed TIMEOUT seconds ago or
+   earlier */
 void
-vmod_open(MOD_CTX ctx, const char *dir, const char *params)
+tree_gc(struct tree *tree, time_t timeout)
 {
-	if (db) {
-		syslog(LOG_DAEMON|LOG_ERR, "tbf.open called twice");
-		return;
-	}
-	tbf_set_db_dir(dir);
-	tbf_open_safe(params);
-}
+	struct node *p;
+	uint64_t t;
 
-void
-vmod_close(MOD_CTX ctx)
-{
-	pthread_mutex_lock(&mutex);
-	if (db) {
-		debug(1, ("closing database %s", dbname));
-		db->close(db, 0);
-		db = NULL;
-		dbenv->close(dbenv, 0);
-		dbenv = NULL;
-		tbf_disabled = 0;
+	pthread_mutex_lock(&tree->mutex);
+	t = (uint64_t) (time(NULL) - timeout) * USEC_PER_SEC;
+	debug(1,("gc till %"PRIu64, t));
+	while ((p = tree->tail) && p->timestamp < t) {
+#ifdef DEBUG
+		debug(1,("deleting %s", tree->tail->keystr));
+		debug(1,("%p %p %p\n", tree->head, tree->tail, tree->tail->prev));
+#endif
+		node_lock(tree, p);
+		tree_delete_node_unlocked(tree, p);
+		node_unlock(p);
+		node_free(p);
+		debug(1,("%p %p\n", tree->head, tree->tail));
 	}
-	pthread_mutex_unlock(&mutex);
-}
-
-void
-vmod_sync(MOD_CTX ctx)
-{
-	if (db) {
-		debug(1, ("synchronizing database"));
-		db->sync(db, 0);
-	}
+	pthread_mutex_unlock(&tree->mutex);
 }
 
 /* Algorithm:
@@ -398,149 +282,179 @@ vmod_sync(MOD_CTX ctx)
    arrived for BURST_SIZE*INTERVAL or more microseconds.
 */
 
-struct tbf_bucket {
-	uint64_t timestamp;  /* microseconds since epoch */
-	size_t tokens;       /* tokens available */
-};
-
 int
-tbf_proc(MOD_CTX ctx, DB *db, const char *key, int cost,
+tbf_proc(struct tree *tree, const char *keystr, int cost,
 	 unsigned long interval, int burst_size)
 {
-	DBT keydat, content;
+	uint8_t key[SHA256_LEN];
+	struct node *node = NULL;
 	struct timeval tv;
 	uint64_t now;
 	uint64_t elapsed;
 	uint64_t tokens;
-	struct tbf_bucket *bkt, init_bkt;
-	int rc, res;
+	int res;
 
-	memset(&keydat, 0, sizeof keydat);
-	keydat.data = (void*) key;
-	keydat.size = strlen(key);
+	key_create(keystr, key);
 
 	gettimeofday(&tv, NULL);
 	now = (uint64_t) tv.tv_sec * USEC_PER_SEC + (uint64_t)tv.tv_usec;
 
-	memset(&content, 0, sizeof content);
-	content.flags = DB_DBT_MALLOC;
-	rc = db->get(db, NULL, &keydat, &content, 0);
-	switch (rc) {
-	case 0:
-		bkt = (struct tbf_bucket *) content.data;
+	switch (tree_lookup_node(tree, key, &node)) {
+	case NODE_FOUND:
 		/* calculate elapsed time and number of new tokens since
 		   last add */;
-		elapsed = now - bkt->timestamp;
+		elapsed = now - node->timestamp;
 		tokens = elapsed / interval; /* partial tokens ignored */
 		/* timestamp set to time of most recent token */
-		bkt->timestamp += tokens * interval; 
+		node->timestamp += tokens * interval; 
 		
 		/* add existing tokens to 64bit counter to prevent overflow
 		   in range check */
-		tokens += bkt->tokens;
+		tokens += node->tokens;
 		if (tokens >= burst_size)
-			bkt->tokens = burst_size;
+			node->tokens = burst_size;
 		else
-			bkt->tokens = (size_t)tokens;
+			node->tokens = (size_t)tokens;
 		
-		debug(2, ("found, elapsed time: %"PRIu64" us, "
+		debug(2, ("%x: found, elapsed time: %"PRIu64" us, "
 			  "new tokens: %"PRIu64", total: %lu ",
-			  elapsed, tokens, (unsigned long) bkt->tokens));
+			  pthread_self(),
+			  elapsed, tokens, (unsigned long) node->tokens));
 		break;
 
-	case DB_NOTFOUND:
+	case NODE_NEW:
 		/* Initialize the structure */
-		init_bkt.timestamp = now;
-		init_bkt.tokens = burst_size;
-		bkt = &init_bkt;
-		break;
-
-	default:
-		syslog(LOG_DAEMON|LOG_ERR, "cannot fetch data %s: %s",
-		       key, db_strerror(rc));
-		return false;
+#ifdef DEBUG
+		node->keystr = strdup(keystr);
+#endif
+		node->timestamp = now;
+		node->tokens = burst_size;
 	}
 
-	if (cost <= bkt->tokens) {
+	if (cost <= node->tokens) {
 		res = 1;
-		bkt->tokens -= cost;
-		debug(2, ("tbf_rate matched %s, tokens left %lu", key,
-			  (unsigned long)bkt->tokens));
+		node->tokens -= cost;
+		debug(2, ("%x: tbf_rate matched %s, tokens left %lu",
+			  pthread_self(), keystr,
+			  (unsigned long) node->tokens));
 	} else {
 		res = 0;
-		debug(1, ("tbf_rate overlimit on %s", key));
+		debug(1, ("%x: tbf_rate overlimit on %s",
+			  pthread_self(), keystr));
 	}
-
-	/* Update the db */
-	content.data = (void*) bkt;
-	content.size = sizeof(*bkt);
-
-	rc = db->put(db, NULL, &keydat, &content, 0);
-	if (rc) {
-		syslog(LOG_DAEMON|LOG_ERR, "error updating key %s: %s",
-		       key, db_strerror(rc));
-	}
-
-	if (bkt != &init_bkt)
-		free(bkt);
-
-	if (autosync_max && ++autosync_count >= autosync_max) {
-		debug(1, ("synchronizing database"));
-		db->sync(db, 0);
-		autosync_count = 0;
-	}
-	
+	node_unlock(node);
+	debug(1, ("tbf_proc: return"));
 	return res;
 }
 
+struct tree *
+tree_create(void)
+{
+	struct tree *tree = calloc(1, sizeof(*tree));
+	AN(tree);
+	pthread_mutex_init(&tree->mutex, NULL);
+	return tree;
+}
+
+void
+tree_free(void *data)
+{
+	struct tree *tree = data;
+	struct node *p;
+
+ 	pthread_mutex_lock(&tree->mutex);
+	while ((p = tree->tail)) {
+		node_lock(tree, p);
+		lru_unlink_node(tree, p);
+		node_unlock(p);
+		node_free(p);
+	}
+	pthread_mutex_unlock(&tree->mutex);
+	pthread_mutex_destroy(&tree->mutex);
+	free(tree);
+}
+
+int
+tbf_event(VRT_CTX, struct vmod_priv *priv, enum vcl_event_e e)
+{
+	switch (e) {
+	case VCL_EVENT_LOAD:
+		priv->priv = tree_create();
+		priv->free = tree_free;
+		break;
+
+	case VCL_EVENT_DISCARD:
+		break;
+
+	default:
+		/* ignore */
+		break;
+	}
+	return 0;
+}
+
+struct tree *
+get_tree(struct vmod_priv *priv)
+{
+	return priv->priv;
+}
+
+VCL_VOID
+vmod_debug(VRT_CTX, VCL_INT newval)
+{
+	debug_level = newval;
+}
+
+VCL_VOID
+vmod_set_gc_interval(VRT_CTX, VCL_REAL interval)
+{
+	gc_interval = interval;
+}
+
+VCL_VOID
+vmod_gc(VRT_CTX, struct vmod_priv *priv, VCL_REAL interval)
+{
+	tree_gc(get_tree(priv), interval);
+}
+
 VCL_BOOL
-vmod_rate(MOD_CTX ctx, VCL_STRING key, VCL_INT cost, VCL_REAL t,
+vmod_rate(VRT_CTX, struct vmod_priv *priv,
+	  VCL_STRING key, VCL_INT cost, VCL_REAL t,
 	  VCL_INT burst_size)
 {
+	struct tree *tree = get_tree(priv);
 	unsigned long interval = t * USEC_PER_SEC;
-	int rc;
 	
-	debug(2, ("entering rate(%s,%d,%g,%d)", key, cost, t, burst_size));
+	debug(2, ("%x: entering rate(%s,%d,%g,%d)",
+		  pthread_self(), key, cost, t, burst_size));
 		
 	if (interval == 0 || burst_size == 0)
 		return false;
 
+	tree_gc(tree, gc_interval);
+
 	if (!cost) {
-		/* cost free, so don't waste time on database access */
+		/* cost free, so don't waste time on tree lookup */
 		return true;
 	}
 	if (cost > burst_size) {
 		/* impossibly expensive, so don't waste time on
-		   database access */
+		   tree lookup */
 		return false;
 	}
 
-	db = tbf_open_safe(NULL);
-	if (db) {
-		struct keylock *kp;
-
-		kp = keylock_find_safe(key);
-		debug(2, ("found key %s, ref %u", key, kp->refcnt));
-		AZ(pthread_mutex_lock(&kp->mutex));
-		rc = tbf_proc(ctx, db, key, cost, interval, burst_size);
-		if (--kp->refcnt == 0)
-			keylock_remove_safe(kp);
-		AZ(pthread_mutex_unlock(&kp->mutex));
-	} else
-		rc = false;
-       
-	return rc;
+	return tbf_proc(tree, key, cost, interval, burst_size);
 }
 
 #define ISWS(c) ((c)==' '||(c)=='\t')
 
 VCL_BOOL
-vmod_check(MOD_CTX ctx, VCL_STRING key, VCL_STRING spec)
+vmod_check(VRT_CTX, struct vmod_priv *priv,
+	   VCL_STRING key, VCL_STRING spec)
 {
-	double t, v, n;
+	double v, n;
 	char *p;
 #define SKIPWS(init) for (init; *spec && ISWS(*spec); spec++)
-	int burst;
 	
 	errno = 0;
 	v = strtod(spec, &p);
@@ -596,5 +510,71 @@ vmod_check(MOD_CTX ctx, VCL_STRING key, VCL_STRING spec)
 		syslog(LOG_DAEMON|LOG_WARNING, "garbage after rate spec: %s",
 		       spec);
 
-	return vmod_rate(ctx, key, 1, n/v, v/n+1);
+	return vmod_rate(ctx, priv, key, 1, n/v, v/n+1);
+}
+
+static char xdig[] = "0123456789abcdef";
+	
+static void
+key_to_str(uint8_t key[], char *buf)
+{
+	size_t i;
+
+	for (i = 0; i < SHA256_LEN; i++) {
+		*buf++ = xdig[key[i] >> 4];
+		*buf++ = xdig[key[i] & 0xf];
+	}
+	*buf = 0;
+}
+
+static void
+node_to_keystr(struct node *node, char *buf)
+{
+	if (node)
+		key_to_str(node->key, buf);
+	else
+		*buf = 0;
+}
+
+VCL_VOID
+vmod_dump(VRT_CTX, struct vmod_priv *priv, VCL_STRING file)
+{
+	struct tree *tree = get_tree(priv);
+	struct node *node;
+	char keybuf[3][2*SHA256_LEN+1];
+	FILE *fp;
+	int err = 0;
+	
+	fp = fopen(file, "w");
+	if (!fp) {
+		syslog(LOG_DAEMON|LOG_ERR,
+		       "tbf.dump: can't open file %s for output: %m", file);
+		return;
+	}
+ 	pthread_mutex_lock(&tree->mutex);
+	if (tree->root) {
+		node_to_keystr(tree->root, keybuf[0]);
+		fprintf(fp, "%s\n", keybuf[0]);
+	}
+	for (node = tree->head; node; node = node->next) {
+		node_to_keystr(node, keybuf[0]);
+		node_to_keystr(node->child[CHILD_LEFT], keybuf[1]);
+		node_to_keystr(node->child[CHILD_RIGHT], keybuf[2]);
+#ifdef DEBUG
+		fprintf(fp, "# %s\n", node->keystr);
+#endif
+		fprintf(fp, "%s:%s:%s:%"PRIu64":%lu\n",
+			keybuf[0], keybuf[1], keybuf[2],
+			node->timestamp, (unsigned long)node->tokens);
+		if (ferror(fp)) {
+			syslog(LOG_DAEMON|LOG_ERR,
+			       "tbf.dump: error writing to %s: %m", file);
+			err = 1;
+			break;
+		}
+	}
+ 	pthread_mutex_unlock(&tree->mutex);
+	fclose(fp);
+	if (err)
+		unlink(file);
 }

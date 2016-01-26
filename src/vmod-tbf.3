@@ -13,19 +13,23 @@
 .\"
 .\" You should have received a copy of the GNU General Public License
 .\" along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
-.TH VMOD-TBF 1 "November 13, 2014" "VMOD-TBF" "User Reference"
+.TH VMOD-TBF 1 "January 26, 2016" "VMOD-TBF" "User Reference"
 .SH NAME
 vmod-tbf \- token bucket filtering for Varnish
 .SH SYNOPSIS
 .B import tbf;
 
-.BI "VOID tbf.open(STRING " dbdir ", STRING " params ");"
-
-.B VOID tbf.close();
-
 .BI "BOOL tbf.rate(STRING " key ", INT " COST ", DURATION " interval ", INT " burst_size ");"
 
 .BI "BOOL tbf.check(STRING " key ", STRING " rate ");"
+
+.BI "VOID tbf.debug(INT " level ");"
+
+.BI "VOID tbf.dump(STRING " file ");"
+
+.BI "VOID tbf.gc(DURATION " interval ");"
+
+.BI "VOID tbf.set_gc_interval(DURATION " interval ");"
 
 .BI "REAL tbf.getla(INT " sample ");"
 
@@ -119,62 +123,26 @@ sub vcl_recv {
 .EE
 .SS Storage
 .PP
-Buckets are kept in a Berkeley database file.  The \fBtbf.open\fR function
-controls its location and permissions.  The \fBdbdir\fR argument
-supplies the full pathname to the directory where the database is
-located.  The \fBparams\fR argument is a semicolon separated list of
-the following parameters:
-.TP
-.BI dbname= NAME
-Sets the name of the database file.  Default is \fBtbf.bdb\fR.
-.TP
-.BR truncate " or " trunc
-Truncate the database if it already exists.
-.TP
-.BI mode= OCT
-Set the file mode.  \fIOCT\fR is an octal number.  The default file
-mode is \fB640\fR.  Note that this parameter takes effect only when
-creating the file.  If the database file already exists by the time
-\fBtbf.open\fR is called, its mode will not be altered.
-.TP
-.BI sync= N
-Synchronize the database with the disk after each \fBN\fR writes.
-.TP
-.BI debug= N
-Set debugging level.
+Buckets are kept in a binary tree structure, indexed by the key value.
+In order to prevent stale data from accumulating in the memory,
+garbage collection is run periodically.  During garbage collection,
+all buckets that have not been accessed more than predefined amount of
+time are removed from the tree and disposed of.  The default interval
+is 1 hour.  It can be configured using the
+.B tbf.set_gc_interval
+function.
 .PP
-Normally, this function should be called only once, from the
-\fBvcl_init\fR subroutine:
+Garbage collection can also be triggered explicitly, using the
+.B tbf.gc
+function with the interval as its argument.
 .PP
-.EX
-sub vcl_init {
-    tbf.open("/var/run/varnish/tbf.db", "mode=600");
-}
-.EE
+The function
+.B tbf.dump
+dumps entire tree to the disk file.
 .PP
-Note that the directory where the database file is located must be
-writable for the user \fBVarnish\fR runs as.
-.PP
-Unless the \fBtbf.open\fR function was called, both \fBtbf.rate\fR and
-\fBtbf.check\fR will attempt to use the database located in
-\fIlocalstatedir\fB/vmod-tbf\fR, where \fIlocalstatedir\fR is the
-directory for modifiable single-machine data, which is set when
-configuring the package (e.g. \fB/var/run\fR or the like).
-.PP
-If the database directory does not exist, \fBtbf.open\fR will attempt
-to create it, deducing its mode from the database file mode (see the
-\fBmode=\fR parameter above) by setting executable 
-bit in each triplet that has read or write bit set (e.g. \fB640\fR
-will become \fB750\fR).
-.PP
-The \fBtbf.close\fR function flushes the data and closes the database.
-It is normally called from the \fBvcl_fini\fR subroutine:
-.PP
-.EX
-sub vcl_fini {
-    tbf.close();
-}
-.EE
+The function
+.B tbf.debug
+sets the debug level.
 .SS Other functions
 .PP
 Several functions are provided that do not exactly belong to the

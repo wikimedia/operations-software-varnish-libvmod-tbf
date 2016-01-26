@@ -23,12 +23,6 @@ server s1 {
 
 varnish v1 -vcl+backend {
 	import tbf from "${vmod_topbuild}/src/.libs/libvmod_tbf.so";
-	sub vcl_init {
-		tbf.open("${vmod_topbuild}/tests/tbf", "truncate");
-	}
-	sub vcl_fini {
-		tbf.close();
-	}
 	sub vcl_recv {
 		if (!tbf.check("url:"+req.url, "4 req/s")) {
              		return (synth(420, "Overlimit"));

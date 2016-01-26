@@ -23,12 +23,6 @@ server s1 {
 
 varnish v1 -vcl+backend {
 	import tbf from "${vmod_topbuild}/src/.libs/libvmod_tbf.so";
-	sub vcl_init {
-		tbf.open("${vmod_topbuild}/tests/tbf", "trunc");
-	}
-	sub vcl_fini {
-		tbf.close();
-	}
 	sub vcl_deliver {
 		set resp.http.result = tbf.rate("url:"+req.url, 1, 1s, 5);
 	}

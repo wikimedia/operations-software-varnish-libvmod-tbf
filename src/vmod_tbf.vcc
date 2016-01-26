@@ -25,11 +25,12 @@ DESCRIPTION
 ===========
 
 $Event tbf_event
-$Function VOID open(STRING, STRING)
-$Function VOID close()
-$Function VOID sync()
-$Function BOOL rate(STRING, INT, DURATION, INT)
-$Function BOOL check(STRING, STRING)
+$Function VOID debug(INT)
+$Function VOID dump(PRIV_VCL, STRING)
+$Function VOID gc(PRIV_VCL, DURATION)
+$Function VOID set_gc_interval(DURATION)
+$Function BOOL rate(PRIV_VCL, STRING, INT, DURATION, INT)
+$Function BOOL check(PRIV_VCL, STRING, STRING)
 $Function REAL getla(INT)
 $Function INT systime()
 $Function STRING strftime(STRING, INT)

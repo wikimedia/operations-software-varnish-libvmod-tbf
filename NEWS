@@ -1,17 +1,20 @@
-vmod-tbf -- history of user-visible changes. 2016-01-23
+vmod-tbf -- history of user-visible changes. 2016-01-26
 Copyright (C) 2013-2016 Sergey Poznyakoff
 See the end of file for copying conditions.
 
 Please send vmod-tbf bug reports to <gray@gnu.org>
 
 
-Version 2.0.90-4.1.9, (git)
+Version 2.0.91-4.1.9, (git)
 
 * Support for Varnish 4.1
 
 * Versioning changes
 
 Starting with this release, the version number includes version
+
+* TBF data are stored in a binary tree instead of DBM database
+
 
 Version 2.0, 2014-11-13
 
