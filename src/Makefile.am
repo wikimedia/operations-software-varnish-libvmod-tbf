@@ -50,5 +50,3 @@ vcc_if.c vcc_if.h: $(vmodtool) $(vccfile)
 
 EXTRA_DIST = \
 	vmod_tbf.vcc
-
-

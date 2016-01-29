@@ -1,5 +1,5 @@
 # This file is part of vmod-tbf
-# Copyright (C) 2013-2014 Sergey Poznyakoff
+# Copyright (C) 2013-2016 Sergey Poznyakoff
 #
 # Vmod-tbf is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -26,12 +26,17 @@ DESCRIPTION
 
 $Event tbf_event
 $Function VOID debug(INT)
-$Function VOID dump(PRIV_VCL, STRING)
-$Function VOID gc(PRIV_VCL, DURATION)
+$Function VOID dump(STRING)
+$Function VOID load(STRING)
+$Function VOID gc(DURATION)
 $Function VOID set_gc_interval(DURATION)
-$Function BOOL rate(PRIV_VCL, STRING, INT, DURATION, INT)
-$Function BOOL check(PRIV_VCL, STRING, STRING)
+$Function VOID dump_at_exit(STRING)
+$Function BOOL rate(STRING, INT, DURATION, INT)
+$Function BOOL check(STRING, STRING)
 $Function REAL getla(INT)
 $Function INT systime()
 $Function STRING strftime(STRING, INT)
 $Function VOID sleep(DURATION)
+
+$Function VOID log_tree(INT)
+$Function VOID log_stats(INT)

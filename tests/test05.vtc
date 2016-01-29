@@ -1,0 +1,117 @@
+# This file is part of vmod-tbf
+# Copyright (C) 2013-2016 Sergey Poznyakoff
+#
+# Vmod-tbf is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3, or (at your option)
+# any later version.
+#
+# Vmod-tbf is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
+
+varnishtest "Test dump/load facilities"
+
+server s1 {
+       rxreq
+       txresp       
+
+       rxreq
+       txresp       
+
+       rxreq
+       txresp       
+
+       rxreq
+       txresp       
+
+       rxreq
+       txresp       
+
+       rxreq
+       txresp       
+
+       rxreq
+       txresp       
+
+       rxreq
+       txresp       
+
+       rxreq
+       txresp       
+} -start
+
+varnish v1 -vcl+backend {
+	import std;
+	import tbf from "${vmod_topbuild}/src/.libs/libvmod_tbf.so";
+	# sub vcl_init {
+	# 	tbf.debug(20);
+	# }
+	sub vcl_recv {
+		if (req.url == "/dump") {
+			tbf.dump("/tmp/test05.dump");
+		} else if (req.url == "/load") {
+			tbf.load("/tmp/test05.dump");
+		} else if (!tbf.rate("url:"+req.url, 1, 5 s, 2)) {
+			return (synth(420, "Overlimit"));
+		}
+             	return (hash);
+	}
+} -start
+
+client c1 {
+	txreq -url "/seks"
+	rxresp
+	expect resp.status == 200
+	txreq -url "/fire"
+	rxresp
+	expect resp.status == 200
+	txreq -url "/tre"
+	rxresp
+	expect resp.status == 200
+	txreq -url "/fem"
+	rxresp
+	expect resp.status == 200
+	txreq -url "/en"
+	rxresp
+	expect resp.status == 200
+	txreq -url "/to"
+	rxresp
+	expect resp.status == 200
+	txreq -url "/sju"
+	rxresp
+	expect resp.status == 200
+
+	# [1] Save the tree
+	txreq -url "/dump"
+	rxresp
+	expect resp.status == 200
+
+	txreq -url "/sju"
+	rxresp
+	expect resp.status == 200
+	txreq -url "/sju"
+	rxresp
+	expect resp.status == 420
+
+	# Restore the tree to its state at [1]
+	txreq -url "/load"
+	rxresp
+	expect resp.status == 200
+
+	# It should now allow to access /sju
+	txreq -url "/sju"
+	rxresp
+	expect resp.status == 200
+	
+#	delay 
+	
+}
+
+client c1 -run
+
+

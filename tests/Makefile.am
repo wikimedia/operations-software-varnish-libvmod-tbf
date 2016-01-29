@@ -19,6 +19,7 @@ VMOD_TESTS = \
  test01.vtc\
  test02.vtc\
  test03.vtc\
+ test05.vtc\
  time00.vtc
 
 EXTRA_DIST=$(VMOD_TESTS)
