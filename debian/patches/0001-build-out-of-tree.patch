@@ -1,0 +1,102 @@
+Description: out-of-tree builds
+ The whole varnish tree is not needed to build VMODs anymore, libvarnishapi is
+ enough.
+Author: Emanuele Rocca <ema@wikimedia.org>
+Last-Update: 2016-02-04
+
+Index: libvmod-tbf/configure.ac
+===================================================================
+--- libvmod-tbf.orig/configure.ac
++++ libvmod-tbf/configure.ac
+@@ -45,7 +45,32 @@ AC_CHECK_HEADERS(sys/sysinfo.h)
+ # Check for functions
+ AC_CHECK_FUNCS(sysinfo getloadavg)
+ 
+-AM_VARNISHAPI
++PKG_CHECK_MODULES([libvarnishapi], [varnishapi])
++PKG_CHECK_VAR([LIBVARNISHAPI_PREFIX], [varnishapi], [prefix])
++PKG_CHECK_VAR([LIBVARNISHAPI_DATAROOTDIR], [varnishapi], [datarootdir])
++PKG_CHECK_VAR([LIBVARNISHAPI_BINDIR], [varnishapi], [bindir])
++PKG_CHECK_VAR([LIBVARNISHAPI_SBINDIR], [varnishapi], [sbindir])
++AC_SUBST([LIBVARNISHAPI_DATAROOTDIR])
++
++# Varnish include files tree
++VARNISH_VMOD_INCLUDES
++VARNISH_VMOD_DIR
++VARNISH_VMODTOOL
++
++AC_PATH_PROG([VARNISHTEST], [varnishtest], [],
++    [$LIBVARNISHAPI_BINDIR:$LIBVARNISHAPI_SBINDIR:$PATH])
++AC_PATH_PROG([VARNISHD], [varnishd], [],
++    [$LIBVARNISHAPI_SBINDIR:$LIBVARNISHAPI_BINDIR:$PATH])
++
++AC_CHECK_FILE([${VAPI_INCLUDE_DIR}/vmod_abi.h],
++    [
++    AC_MSG_CHECKING([varnish ABI version])
++    AC_SUBST([VMOD_ABI_VERSION],
++         [`cut -d ' ' -f 4 "${VAPI_INCLUDE_DIR}/vmod_abi.h"`])
++    AC_MSG_RESULT([${VMOD_ABI_VERSION}])
++    ], [
++    AC_MSG_ERROR([Could not find vmod_abi.h. Need Varnish4 or higher])
++    ])
+ 
+ AC_CONFIG_FILES([
+ 	Makefile
+Index: libvmod-tbf/src/Makefile.am
+===================================================================
+--- libvmod-tbf.orig/src/Makefile.am
++++ libvmod-tbf/src/Makefile.am
+@@ -15,14 +15,12 @@
+ # along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
+ 
+ AM_CPPFLAGS=\
+- -I$(VARNISHSRC)/include\
+- -I$(VARNISHSRC)/bin/varnishd\
+- -I$(VARNISHSRC)\
++ @VMOD_INCLUDES@ \
+  -DLOCALSTATEDIR=\"$(localstatedir)\"
+ 
+ dist_man_MANS=vmod-tbf.3 vmod_tbf.3
+ 
+-vmoddir = $(VMODDIR)
++vmoddir = @VMOD_DIR@
+ vmod_LTLIBRARIES = libvmod_tbf.la
+ 
+ libvmod_tbf_la_LDFLAGS=-module -export-dynamic -avoid-version
+@@ -41,7 +39,7 @@ tbf.lo: vcc_if.h
+ 
+ CLEANFILES = vcc_if.c vcc_if.h *.rst
+ 
+-vmodtool = $(VARNISHSRC)/lib/libvcc/vmodtool.py
++vmodtool = @VMODTOOL@
+ vmodtoolargs = --strict
+ vccfile = $(top_srcdir)/src/vmod_tbf.vcc
+ 
+Index: libvmod-tbf/src/tbf.h
+===================================================================
+--- libvmod-tbf.orig/src/tbf.h
++++ libvmod-tbf/src/tbf.h
+@@ -29,7 +29,7 @@
+ #include "vsha256.h"
+ #include "pthread.h"
+ 
+-#include "bin/varnishd/cache/cache.h"
++#include "cache/cache.h"
+ #define MOD_CTX const struct vrt_ctx *
+ #define WSPTR(s) ((s)->ws)
+ 
+Index: libvmod-tbf/tests/Makefile.am
+===================================================================
+--- libvmod-tbf.orig/tests/Makefile.am
++++ libvmod-tbf/tests/Makefile.am
+@@ -35,8 +35,8 @@ check: $(BUILT_TESTS)
+ 	    else \
+ 		t=$(abs_srcdir)/$$t;\
+ 	    fi; \
+-	    $(VARNISHSRC)/bin/varnishtest/varnishtest \
+-                    -Dvarnishd=$(VARNISHSRC)/bin/varnishd/varnishd \
++	    @VARNISHTEST@ \
++                    -Dvarnishd=@VARNISHD@ \
+ 	            -Dvmod_topsrc=$(abs_top_srcdir) \
+                     -Dvmod_topbuild=$(abs_top_builddir) $$t; \
+         done

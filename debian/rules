@@ -1,0 +1,16 @@
+#!/usr/bin/make -f
+
+# varnishtest is provided by the 'varnish' package, and we do not want to
+# build-depend on it just to run VMOD tests. Do not run make check in
+# dh_auto_test if varnishtest is not found on the build host.
+ifeq (, $(shell which varnishtest))
+	export DEB_BUILD_OPTIONS = nocheck
+endif
+
+%:
+	dh $@ --with autoreconf
+
+override_dh_strip:
+	dh_strip --dbg-package=libvmod-tbf-dbg
+
+.PHONY: override_dh_strip

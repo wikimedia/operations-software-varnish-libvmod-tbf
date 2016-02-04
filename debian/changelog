@@ -1,0 +1,6 @@
+libvmod-tbf (2.0.91-1wm) jessie-wikimedia; urgency=medium
+
+  * Local package (WMF).
+  * Initial Debian packaging.
+
+ -- Emanuele Rocca <ema@wikimedia.org>  Wed, 03 Feb 2016 13:39:06 +0100

@@ -1,0 +1,33 @@
+Source: libvmod-tbf
+Section: web
+Priority: extra
+Maintainer: Emanuele Rocca <ema@wikimedia.org>
+Build-Depends: debhelper (>= 9),
+ dh-autoreconf,
+ pkg-config,
+ libvarnishapi-dev (>= 4.1.1)
+Standards-Version: 3.9.6
+Vcs-Git: http://git.gnu.org.ua/cgit/vmod-tbf.git
+
+Package: libvmod-tbf
+Architecture: any
+Depends: varnish (>= 4.1.1), ${shlibs:Depends}, ${misc:Depends}
+Description: Varnish VMOD for token bucket filtering
+ libvmod-tbf is a Varnish module that implements token bucket filtering for
+ Varnish Cache.
+ .
+ Token bucket filtering (TBF) allows for controlling the rate of
+ data traffic.
+
+Package: libvmod-tbf-dbg
+Architecture: any
+Depends: libvmod-tbf (= ${binary:Version}), ${misc:Depends}
+Section: debug
+Description: Varnish VMOD for token bucket filtering (debug symbols)
+ libvmod-tbf is a Varnish module that implements token bucket filtering for
+ Varnish Cache.
+ .
+ Token bucket filtering (TBF) allows for controlling the rate of
+ data traffic.
+ .
+ This package provides the debugging symbols for libvmod-tbf.
