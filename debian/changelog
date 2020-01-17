@@ -1,3 +1,12 @@
+libvmod-tbf (2.0.91-2wm) buster-wikimedia; urgency=medium
+
+  * Rebuild for buster T242093.
+  * Added myself to the uploaders list.
+  * Fixed varnish ABI version detection on 0001-build-out-of-tree patch.
+  * Avoid building against varnish >= 5.2.
+
+ -- Valentin Gutierrez <vgutierrez@wikimedia.org>  Fri, 17 Jan 2020 12:13:11 +0000
+
 libvmod-tbf (2.0.91-1wm) jessie-wikimedia; urgency=medium
 
   * Local package (WMF).

@@ -11,7 +11,7 @@ Index: libvmod-tbf/configure.ac
 @@ -45,7 +45,32 @@ AC_CHECK_HEADERS(sys/sysinfo.h)
  # Check for functions
  AC_CHECK_FUNCS(sysinfo getloadavg)
- 
+
 -AM_VARNISHAPI
 +PKG_CHECK_MODULES([libvarnishapi], [varnishapi])
 +PKG_CHECK_VAR([LIBVARNISHAPI_PREFIX], [varnishapi], [prefix])
@@ -34,12 +34,12 @@ Index: libvmod-tbf/configure.ac
 +    [
 +    AC_MSG_CHECKING([varnish ABI version])
 +    AC_SUBST([VMOD_ABI_VERSION],
-+         [`cut -d ' ' -f 4 "${VAPI_INCLUDE_DIR}/vmod_abi.h"`])
++         [`grep "#define" "${VAPI_INCLUDE_DIR}/vmod_abi.h" | cut -d ' ' -f 4`])
 +    AC_MSG_RESULT([${VMOD_ABI_VERSION}])
 +    ], [
 +    AC_MSG_ERROR([Could not find vmod_abi.h. Need Varnish4 or higher])
 +    ])
- 
+
  AC_CONFIG_FILES([
  	Makefile
 Index: libvmod-tbf/src/Makefile.am
@@ -48,30 +48,30 @@ Index: libvmod-tbf/src/Makefile.am
 +++ libvmod-tbf/src/Makefile.am
 @@ -15,14 +15,12 @@
  # along with vmod-tbf.  If not, see <http://www.gnu.org/licenses/>.
- 
+
  AM_CPPFLAGS=\
 - -I$(VARNISHSRC)/include\
 - -I$(VARNISHSRC)/bin/varnishd\
 - -I$(VARNISHSRC)\
 + @VMOD_INCLUDES@ \
   -DLOCALSTATEDIR=\"$(localstatedir)\"
- 
+
  dist_man_MANS=vmod-tbf.3 vmod_tbf.3
- 
+
 -vmoddir = $(VMODDIR)
 +vmoddir = @VMOD_DIR@
  vmod_LTLIBRARIES = libvmod_tbf.la
- 
+
  libvmod_tbf_la_LDFLAGS=-module -export-dynamic -avoid-version
 @@ -41,7 +39,7 @@ tbf.lo: vcc_if.h
- 
+
  CLEANFILES = vcc_if.c vcc_if.h *.rst
- 
+
 -vmodtool = $(VARNISHSRC)/lib/libvcc/vmodtool.py
 +vmodtool = @VMODTOOL@
  vmodtoolargs = --strict
  vccfile = $(top_srcdir)/src/vmod_tbf.vcc
- 
+
 Index: libvmod-tbf/src/tbf.h
 ===================================================================
 --- libvmod-tbf.orig/src/tbf.h
@@ -79,12 +79,12 @@ Index: libvmod-tbf/src/tbf.h
 @@ -29,7 +29,7 @@
  #include "vsha256.h"
  #include "pthread.h"
- 
+
 -#include "bin/varnishd/cache/cache.h"
 +#include "cache/cache.h"
  #define MOD_CTX const struct vrt_ctx *
  #define WSPTR(s) ((s)->ws)
- 
+
 Index: libvmod-tbf/tests/Makefile.am
 ===================================================================
 --- libvmod-tbf.orig/tests/Makefile.am
